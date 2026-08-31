@@ -1,0 +1,13 @@
+﻿{
+  "name": "logistics-dapp",
+  "version": "1.0.0",
+  "description": "Decentralized Escrow and Milestone-Based Logistics Platform",
+  "main": "server.js",
+  "scripts": {
+    "test": "truffle test",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}
