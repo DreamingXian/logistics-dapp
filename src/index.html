@@ -1,104 +1,612 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Decentralized Escrow & Logistics Platform</title>
+  <title>Decentralized Logistics & Escrow Platform</title>
+  <!-- Google Fonts: Outfit & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <!-- Bootstrap 5 CSS -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Leaflet.js OpenStreetMap CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <!-- Custom Glassmorphic Styles -->
   <link rel="stylesheet" href="css/style.css">
+  <!-- Web3.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/web3/1.10.0/web3.min.js"></script>
+  <!-- Leaflet.js -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top py-3">
-    <div class="container">
-      <a class="navbar-brand fw-bold d-flex align-items-center" href="#">
-        <span class="fs-4 me-2">🚢</span> Logistics Escrow dApp
+
+  <!-- Top Global Header -->
+  <nav class="navbar navbar-expand-lg navbar-dark navbar-custom sticky-top py-2 px-3">
+    <div class="container-fluid">
+      <a class="navbar-brand fw-bold d-flex align-items-center" href="#" onclick="App.onBrandClick()">
+        <span class="brand-icon me-2">🚢</span>
+        <div>
+          <span class="brand-title">LogiChain Escrow</span>
+          <span class="brand-subtitle d-block">Decentralized B2B Freight Escrow & Milestone Settlement</span>
+        </div>
       </a>
-      <div class="d-flex align-items-center gap-2">
-        <button id="connectWalletBtn" class="btn btn-primary px-4" onclick="App.connectWallet()">Connect MetaMask</button>
-        <span id="accountBadge" class="badge bg-secondary d-none py-2 px-3"></span>
-        <span id="roleBadge" class="badge bg-info text-dark d-none py-2 px-3"></span>
-        <span id="reputationBadge" class="badge bg-warning text-dark d-none py-2 px-3"></span>
+
+      <!-- Right Header Status Indicators -->
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span id="networkBadge" class="badge network-badge px-3 py-2 d-none">
+          <span class="status-dot me-1"></span> <span id="networkName">Detecting...</span>
+        </span>
+        <span id="roleBadge" class="badge role-badge px-3 py-2 d-none"></span>
+        <span id="reputationBadge" class="badge rep-badge px-3 py-2 d-none"></span>
+        <span id="accountBadge" class="badge account-badge px-3 py-2 d-none"></span>
+        
+        <button id="connectWalletBtn" class="btn btn-primary btn-glow px-4 py-2" onclick="App.connectWallet()">
+          🦊 Connect MetaMask
+        </button>
       </div>
     </div>
   </nav>
 
-  <div class="container py-4">
-    <div id="registrationPanel" class="glass-card p-4 mb-4 d-none">
-      <h4 class="fw-bold mb-3 text-primary">📝 Register User Profile</h4>
-      <div class="row g-3">
-        <div class="col-md-5">
-          <label class="form-label">Full Name / Company Name</label>
-          <input type="text" id="regName" class="form-control bg-dark text-white border-secondary" placeholder="e.g. Acme Corp">
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Role Designation</label>
-          <select id="regRole" class="form-select bg-dark text-white border-secondary">
-            <option value="1">Shipper (Cargo Owner / Buyer)</option>
-            <option value="2">Carrier (Transporter / Logistics)</option>
-          </select>
-        </div>
-        <div class="col-md-3 d-flex align-items-end">
-          <button class="btn btn-success w-100 py-2 fw-semibold" onclick="App.registerUser()">Register</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="shipperCreatePanel" class="glass-card p-4 mb-4 d-none">
-      <h4 class="fw-bold mb-3 text-primary">📦 Create Freight Agreement & Fund Escrow</h4>
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Carrier Address</label>
-          <input type="text" id="createCarrierAddr" class="form-control bg-dark text-white border-secondary" placeholder="0x...">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Distance (km)</label>
-          <input type="number" id="calcDistance" class="form-control bg-dark text-white border-secondary" value="50" oninput="App.calculateEstimate()">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Weight (kg)</label>
-          <input type="number" id="calcWeight" class="form-control bg-dark text-white border-secondary" value="20" oninput="App.calculateEstimate()">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Payload (ETH)</label>
-          <input type="number" step="0.001" id="createEthValue" class="form-control bg-dark text-white border-secondary" placeholder="0.05">
-        </div>
-        <div class="col-md-2">
-          <label class="form-label">Deadline (Mins)</label>
-          <input type="number" id="createDeadlineMinutes" class="form-control bg-dark text-white border-secondary" value="10">
-        </div>
-        <div class="col-12 text-end">
-          <button class="btn btn-primary px-4 py-2 fw-semibold" onclick="App.createAgreement()">Deposit & Create Agreement</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="glass-card p-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="fw-bold mb-0 text-white">📊 Public Scannable Agreement Ledger</h4>
-        <button class="btn btn-sm btn-outline-light" onclick="App.loadAgreements()">🔄 Refresh Table</button>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-dark-custom align-middle">
-          <thead>
-            <tr class="text-secondary">
-              <th>ID</th>
-              <th>Shipper</th>
-              <th>Carrier</th>
-              <th>Total ETH</th>
-              <th>Remaining Escrow</th>
-              <th>Deadline</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="agreementTableBody">
-            <tr><td colspan="8" class="text-center text-muted py-4">Connect MetaMask wallet to load agreements</td></tr>
-          </tbody>
-        </table>
-      </div>
+  <!-- Secondary Role-Based Navigation Bar (Visible when connected) -->
+  <div id="navTabsContainer" class="nav-tabs-wrapper py-2 border-bottom border-secondary border-opacity-25 d-none">
+    <div class="container-fluid">
+      <ul class="nav nav-pills custom-pills gap-2" id="mainNavPills">
+        <!-- Dynamically injected via app.js -->
+      </ul>
     </div>
   </div>
+
+  <!-- Main App Viewport Container -->
+  <main class="container-fluid py-4 px-md-4">
+
+    <!-- ================= VIEW 0: UNCONNECTED HERO GATEWAY ================= -->
+    <div id="view-disconnected" class="text-center py-5">
+      <div class="row justify-content-center">
+        <div class="col-lg-8">
+          <div class="glass-card p-5 hero-card">
+            <div class="display-1 mb-3">⚓</div>
+            <h1 class="fw-bold mb-3 text-gradient">Trustless B2B Freight Escrow Platform</h1>
+            <p class="lead text-muted mb-4">
+              Eliminate commercial settlement delays, protect cargo payments with automated 30%/70% milestone payouts,
+              and build verifiable on-chain carrier reputation on Ethereum.
+            </p>
+            <div class="row g-3 justify-content-center mb-4">
+              <div class="col-md-4">
+                <div class="feature-box p-3">
+                  <div class="fs-4 mb-2">🔒</div>
+                  <h6 class="fw-bold text-white">100% Upfront Escrow</h6>
+                  <p class="small text-muted mb-0">Shipper funds are safely locked in smart contract custody before cargo pickup.</p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="feature-box p-3">
+                  <div class="fs-4 mb-2">⏱️</div>
+                  <h6 class="fw-bold text-white">Timeout Protection</h6>
+                  <p class="small text-muted mb-0">Automated zero-intermediary refund if carrier fails to meet delivery deadline.</p>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <div class="feature-box p-3">
+                  <div class="fs-4 mb-2">⭐</div>
+                  <h6 class="fw-bold text-white">Reputation Tokens</h6>
+                  <p class="small text-muted mb-0">Carriers accumulate ERC-20 CRT tokens (+50 on pickup, +100 on delivery).</p>
+                </div>
+              </div>
+            </div>
+            <button class="btn btn-primary btn-lg btn-glow px-5 py-3 fw-bold" onclick="App.connectWallet()">
+              Connect MetaMask Wallet to Begin
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 1: REGISTRATION GATE (For new accounts) ================= -->
+    <div id="view-register" class="row justify-content-center py-3 d-none">
+      <div class="col-lg-6 col-md-8">
+        <div class="glass-card p-4 p-md-5 border-primary">
+          <div class="text-center mb-4">
+            <div class="badge bg-primary bg-opacity-25 text-primary px-3 py-2 mb-2 rounded-pill">New Account Onboarding</div>
+            <h3 class="fw-bold text-white">Create Your Web3 Logistics Profile</h3>
+            <p class="text-muted small">Select your designated business role in the freight logistics network.</p>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label text-white fw-semibold">Company / Entity Name</label>
+            <input type="text" id="regName" class="form-control form-control-dark" placeholder="e.g. Acme Semiconductor Sdn Bhd">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label text-white fw-semibold">Select Business Role</label>
+            <select id="regRole" class="form-select form-control-dark" onchange="App.onRoleSelectChange()">
+              <option value="1">📦 Shipper (Cargo Owner / Manufacturer / Funder)</option>
+              <option value="2">🚚 Carrier (Fleet Operator / Commercial Transporter)</option>
+            </select>
+          </div>
+
+          <!-- Carrier Security Stake Section -->
+          <div id="carrierStakeGroup" class="mb-4 d-none">
+            <div class="p-3 rounded bg-warning bg-opacity-10 border border-warning border-opacity-25">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-warning fw-bold small">🛡️ Security Collateral Deposit (Mandatory License Deposit)</span>
+                <span class="badge bg-warning text-dark">Fixed: 0.01 ETH (≈ RM 135)</span>
+              </div>
+              <p class="text-muted extra-small mb-2">
+                Carriers deposit a fixed 0.01 ETH security stake to guarantee cargo safety against loss or damage. 
+                This stake can be fully withdrawn at any time provided you have no in-progress shipments.
+              </p>
+              <div class="input-group">
+                <input type="number" id="regCarrierStake" class="form-control form-control-dark" value="0.01" readonly>
+                <span class="input-group-text bg-dark border-secondary text-white">ETH (≈ RM 135.00)</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-success btn-lg w-100 py-3 fw-bold btn-glow" onclick="App.registerUser()">
+            Confirm Registration & Enter Portal
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 2: SHIPPER WORKSPACE ================= -->
+    <div id="view-shipper" class="d-none">
+      <!-- Upper Section: Action Header & Expandable Agreement Creator -->
+      <div class="glass-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+          <div>
+            <span class="badge bg-info text-dark px-3 py-1 mb-1">Shipper Operations Portal</span>
+            <h3 class="fw-bold text-white mb-0">📦 Freight Contracts & Escrow Management</h3>
+            <p class="text-muted small mb-0">Draft freight specifications, select routes with OpenStreetMap, deposit 100% escrow, and manage payouts.</p>
+          </div>
+          <div>
+            <button class="btn btn-primary btn-lg btn-glow px-4 py-2 fw-bold d-flex align-items-center" onclick="App.toggleCreateAgreementPanel()">
+              <span class="fs-5 me-2" id="createBtnIcon">➕</span> <span id="createBtnText">Create New Shipment Agreement</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Expandable Shipment Creator Card -->
+        <div id="createAgreementContainer" class="expandable-panel mt-4 pt-4 border-top border-secondary border-opacity-25 d-none">
+          <div class="p-4 rounded bg-dark bg-opacity-75 border border-primary border-opacity-50">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h5 class="fw-bold text-primary mb-0">📝 Freight Agreement & Route Specifications</h5>
+              <span class="badge bg-secondary">24-Hour Carrier Acceptance Window</span>
+            </div>
+            
+            <div class="row g-3">
+              <!-- Cargo Information & Proof -->
+              <div class="col-md-6">
+                <label class="form-label text-white small fw-semibold">Cargo Description / Item Manifest</label>
+                <input type="text" id="createCargoDesc" class="form-control form-control-dark" placeholder="e.g. 5 Pallets of Microcontroller PCBs (Fragile, Handle with Care)">
+              </div>
+
+              <!-- Carrier Selection -->
+              <div class="col-md-6">
+                <label class="form-label text-white small fw-semibold">Designated Carrier Fleet</label>
+                <select id="shipperCarrierSelect" class="form-select form-control-dark" onchange="App.onCarrierSelectChange()">
+                  <option value="">-- Choose Registered Carrier --</option>
+                </select>
+                <div class="extra-small text-muted mt-1" id="carrierSelectedDetails">Select a carrier to review verified tier & reliability multiplier.</div>
+              </div>
+
+              <!-- Cargo Value & Photo Proof -->
+              <div class="col-md-3">
+                <label class="form-label text-white small fw-semibold">Declared Cargo Value (RM)</label>
+                <div class="input-group">
+                  <span class="input-group-text bg-dark border-secondary text-white">RM</span>
+                  <input type="number" id="createCargoValue" class="form-control form-control-dark" value="25000" min="100" placeholder="25000">
+                </div>
+                <div class="extra-small text-muted mt-1">Recorded for dispute/insurance reference.</div>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label text-white small fw-semibold">Cargo Weight (kg)</label>
+                <div class="input-group">
+                  <input type="number" id="createWeight" class="form-control form-control-dark" value="850" min="10" oninput="App.recalculateShipperQuote()">
+                  <span class="input-group-text bg-dark border-secondary text-white">KG</span>
+                </div>
+                <div class="extra-small text-muted mt-1">Rate: RM 0.135 / kg</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label text-white small fw-semibold">Initial Cargo Condition Photo (IPFS Proof)</label>
+                <div class="d-flex gap-2 align-items-center">
+                  <input type="file" id="createCargoPhotoInput" class="form-control form-control-dark" accept="image/*" onchange="App.onCargoPhotoSelected(this)">
+                  <img id="cargoPhotoPreview" class="rounded border border-secondary d-none" style="width: 45px; height: 45px; object-fit: cover;" alt="Preview">
+                </div>
+                <div class="extra-small text-muted mt-1">Upload timestamped photo before pickup to prove packaging condition.</div>
+              </div>
+
+              <!-- Map 1: Origin Location Section (Search, Map, Readonly Address, Manual Details) -->
+              <div class="col-md-6">
+                <div class="p-3 rounded bg-dark border border-secondary border-opacity-75 h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label text-success fw-bold small mb-0">🟢 1. Origin / Pickup Location</label>
+                    <span class="extra-small text-muted">Click map or search</span>
+                  </div>
+
+                  <!-- Location Search Input -->
+                  <div class="input-group input-group-sm mb-2">
+                    <input type="text" id="originSearchInput" class="form-control form-control-dark" placeholder="Search city or area (e.g. Bayan Lepas, Penang)" onkeydown="if(event.key==='Enter'){event.preventDefault();App.searchLocation('origin');}">
+                    <button class="btn btn-outline-success btn-sm px-3" type="button" onclick="App.searchLocation('origin')">🔍 Find</button>
+                  </div>
+
+                  <!-- Origin Small Map -->
+                  <div id="originMap" class="small-map-container mb-2"></div>
+
+                  <!-- Auto-filled Selected Address (Read-only) -->
+                  <label class="extra-small text-muted mb-1">Selected Origin Coordinates & Area (Read-Only):</label>
+                  <input type="text" id="originSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="Bayan Lepas, Penang (Lat: 5.2974, Lng: 100.2762)">
+
+                  <!-- Manual Address Details -->
+                  <label class="extra-small text-muted mb-1">Manual Address Details (Factory / Floor / Loading Bay):</label>
+                  <input type="text" id="originAddressDetails" class="form-control form-control-dark" placeholder="e.g. Phase 4, Bayan Lepas Free Industrial Zone, Gate 2">
+                </div>
+              </div>
+
+              <!-- Map 2: Destination Location Section (Search, Map, Readonly Address, Manual Details) -->
+              <div class="col-md-6">
+                <div class="p-3 rounded bg-dark border border-secondary border-opacity-75 h-100">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <label class="form-label text-danger fw-bold small mb-0">🔴 2. Destination / Delivery Location</label>
+                    <span class="extra-small text-muted">Click map or search</span>
+                  </div>
+
+                  <!-- Location Search Input -->
+                  <div class="input-group input-group-sm mb-2">
+                    <input type="text" id="destSearchInput" class="form-control form-control-dark" placeholder="Search city or area (e.g. Port Klang, Selangor)" onkeydown="if(event.key==='Enter'){event.preventDefault();App.searchLocation('dest');}">
+                    <button class="btn btn-outline-danger btn-sm px-3" type="button" onclick="App.searchLocation('dest')">🔍 Find</button>
+                  </div>
+
+                  <!-- Destination Small Map -->
+                  <div id="destMap" class="small-map-container mb-2"></div>
+
+                  <!-- Auto-filled Selected Address (Read-only) -->
+                  <label class="extra-small text-muted mb-1">Selected Destination Coordinates & Area (Read-Only):</label>
+                  <input type="text" id="destSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="Port Klang, Selangor (Lat: 3.0039, Lng: 101.3934)">
+
+                  <!-- Manual Address Details -->
+                  <label class="extra-small text-muted mb-1">Manual Address Details (Warehouse / Gate / Contact Person):</label>
+                  <input type="text" id="destAddressDetails" class="form-control form-control-dark" placeholder="e.g. PKFZ Warehouse Block B, Jalan Pelabuhan Barat, Dock 5">
+                </div>
+              </div>
+
+              <!-- Map 3: Route Overview & Highway Calculation (Read-only preview) -->
+              <div class="col-12">
+                <div class="p-3 rounded bg-dark border border-primary border-opacity-40">
+                  <div class="d-flex justify-content-between align-items-center mb-1">
+                    <span class="text-white small fw-bold">🗺️ 3. Highway Route Overview (Read-Only Preview)</span>
+                    <span class="extra-small text-info">🔒 Display only. To adjust locations, use the Origin or Destination maps above.</span>
+                  </div>
+                  <div id="routeOverviewMap" class="route-map-container mb-2"></div>
+                </div>
+              </div>
+
+              <!-- Distance & Exact Date-Time Deadline -->
+              <div class="col-md-6">
+                <label class="form-label text-white small fw-semibold">Calculated Highway Distance (km)</label>
+                <div class="input-group">
+                  <input type="number" id="createDistance" class="form-control form-control-dark" value="350" min="5" oninput="App.recalculateShipperQuote()">
+                  <span class="input-group-text bg-dark border-secondary text-white">KM</span>
+                  <button class="btn btn-outline-info btn-sm" type="button" onclick="App.recalculateMapDistance()">🔄 Re-estimate</button>
+                </div>
+                <div class="extra-small text-muted mt-1">Calculated via OpenStreetMap geodesic coordinates (+25% highway factor).</div>
+              </div>
+
+              <div class="col-md-6">
+                <label class="form-label text-white small fw-semibold">Delivery Completion Deadline (Click to Pick Date & Time)</label>
+                <div class="input-group">
+                  <input type="datetime-local" id="createExactDeadline" class="form-control form-control-dark" onclick="if(this.showPicker) this.showPicker()" style="cursor: pointer;">
+                  <button class="btn btn-outline-info" type="button" onclick="const p=document.getElementById('createExactDeadline'); if(p.showPicker) p.showPicker(); else p.focus();">📅 Calendar</button>
+                </div>
+                <div class="d-flex gap-2 mt-1">
+                  <button type="button" class="btn btn-sm btn-outline-secondary extra-small py-0 px-2" onclick="App.setQuickDeadline(3)">+3 Hours</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary extra-small py-0 px-2" onclick="App.setQuickDeadline(24)">Tomorrow (24h)</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary extra-small py-0 px-2" onclick="App.setQuickDeadline(48)">+48 Hours</button>
+                </div>
+              </div>
+
+              <!-- Quotation Breakdown Card -->
+              <div class="col-12 mt-3">
+                <div class="p-3 rounded bg-dark border border-secondary">
+                  <div class="row align-items-center">
+                    <div class="col-md-8">
+                      <div class="d-flex flex-wrap gap-3 small text-muted">
+                        <span>Base Dispatch: <b>0.002 ETH (RM 27.00)</b></span>
+                        <span>Distance Charge: <b id="quoteDistFee">0.0175 ETH (RM 236.25)</b></span>
+                        <span>Weight Charge: <b id="quoteWeightFee">0.0085 ETH (RM 114.75)</b></span>
+                        <span>Carrier Tier Multiplier: <b id="quoteMultiplier" class="text-info">1.0x</b></span>
+                      </div>
+                    </div>
+                    <div class="col-md-4 text-md-end mt-2 mt-md-0">
+                      <span class="extra-small text-muted text-uppercase d-block">100% Escrow Required:</span>
+                      <span class="fs-4 fw-bold text-gradient" id="quoteTotalEth">0.0280 ETH</span>
+                      <span class="text-info small ms-1" id="quoteTotalMyr">(≈ RM 378.00 MYR)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Submit & Cancel -->
+              <div class="col-12 text-end mt-3">
+                <button class="btn btn-outline-secondary me-2 px-4" onclick="App.toggleCreateAgreementPanel()">Cancel</button>
+                <button class="btn btn-primary btn-glow px-5 fw-bold" onclick="App.createAgreement()">
+                  🔒 Deposit Escrow & Dispatch Agreement Request
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lower Section: Shipper's Contract Inventory & Status Filters -->
+      <div class="glass-card p-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <h5 class="fw-bold text-white mb-0">📑 Your Created Freight Agreements</h5>
+          
+          <!-- Filters & Sorting -->
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn filter-pill-btn active" onclick="App.filterShipperContracts('ALL', this)">All</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('PendingAcceptance', this)">Pending Acceptance</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('InTransit', this)">Pickup Required</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Delivering', this)">In Transit</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Completed', this)">Completed</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Disputed', this)">Disputed</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Refunded', this)">Refunded</button>
+            </div>
+            <select id="shipperSortSelect" class="form-select form-select-sm form-control-dark ms-md-2" style="width: auto;" onchange="App.sortShipperContracts()">
+              <option value="newest">Sort: Newest First</option>
+              <option value="oldest">Sort: Oldest First</option>
+              <option value="valueHigh">Sort: Highest Escrow Value</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="shipperShipmentsList">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 3: CARRIER OVERVIEW & PROFILE (Analytics) ================= -->
+    <div id="view-carrier-profile" class="d-none">
+      <div class="glass-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+          <div class="d-flex align-items-center gap-3">
+            <div class="display-5" id="carrierProfileTierIcon">🥉</div>
+            <div>
+              <div class="d-flex align-items-center gap-2">
+                <h3 class="fw-bold text-white mb-0" id="carrierProfileTitle">Carrier Fleet Operator</h3>
+                <span class="badge bg-success small">Verified Active Fleet</span>
+              </div>
+              <span class="text-muted font-monospace small" id="carrierProfileAddress">0x0000...0000</span>
+            </div>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-warning text-dark px-3 py-1 fs-6" id="carrierProfileTierBadge">Bronze Tier (1.0x Rate)</span>
+            <div class="extra-small text-muted mt-1">Accumulated: <span id="carrierProfileCrt" class="text-warning fw-bold">0 CRT</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Carrier Work Status & Financial Analytics Grid -->
+      <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+          <div class="stat-box">
+            <span class="extra-small text-muted text-uppercase">Completed Deliveries</span>
+            <h2 class="fw-bold text-success my-1" id="statCarrierCompleted">0</h2>
+            <span class="extra-small text-muted">100% Success Rating</span>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-box">
+            <span class="extra-small text-muted text-uppercase">Active Deliveries</span>
+            <h2 class="fw-bold text-primary my-1" id="statCarrierActive">0</h2>
+            <span class="extra-small text-muted">Currently In Transit</span>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-box">
+            <span class="extra-small text-muted text-uppercase">Disputed / Damaged</span>
+            <h2 class="fw-bold text-danger my-1" id="statCarrierDisputed">0</h2>
+            <span class="extra-small text-muted">Contested Cargo Claims</span>
+          </div>
+        </div>
+        <div class="col-md-3 col-6">
+          <div class="stat-box">
+            <span class="extra-small text-muted text-uppercase">Total Earned Escrow</span>
+            <h2 class="fw-bold text-gradient my-1" id="statCarrierEarnings">0.00 ETH</h2>
+            <span class="extra-small text-muted" id="statCarrierEarningsMyr">≈ RM 0.00 MYR</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Collateral Security & Compliance Section -->
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <div class="glass-card p-4 h-100">
+            <h5 class="fw-bold text-white mb-2">🛡️ Security Collateral License & Compliance</h5>
+            <p class="text-muted small mb-3">
+              Your 0.01 ETH deposit serves as an active carrier license and cargo integrity collateral.
+              You can withdraw your stake at any time when you have no active in-progress shipments.
+            </p>
+            <div class="p-3 rounded bg-dark border border-secondary mb-3">
+              <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">Active Staked Collateral:</span>
+                <span class="text-white fw-bold fs-5" id="carrierStakeBalance">0.010 ETH (RM 135.00)</span>
+              </div>
+              <div class="d-flex justify-content-between mb-2">
+                <span class="text-muted">License Standing:</span>
+                <span class="badge bg-success" id="carrierStakeStatus">Active & Listed for Shippers</span>
+              </div>
+              <div class="d-flex justify-content-between">
+                <span class="text-muted">Unsettled Penalties / Slashes:</span>
+                <span class="text-success fw-bold">None (RM 0.00)</span>
+              </div>
+            </div>
+
+            <div class="d-flex gap-2">
+              <!-- Re-activate button only visible if stake dropped below 0.01 ETH -->
+              <button id="btnReactivateStake" class="btn btn-warning flex-fill fw-bold d-none" onclick="App.reactivateCarrierStake()">
+                ⚡ Reactivate Collateral License (0.01 ETH)
+              </button>
+              <button id="btnWithdrawStake" class="btn btn-outline-danger flex-fill" onclick="App.withdrawCarrierStake()">
+                Withdraw Stake (Deregister Fleet)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Reputation Tier Progression -->
+        <div class="col-lg-6">
+          <div class="glass-card p-4 h-100">
+            <h5 class="fw-bold text-white mb-2">⭐ Carrier Reputation Progression</h5>
+            <p class="text-muted small mb-3">
+              Earn CRT tokens for successful cargo pickup (+50 CRT) and delivery (+100 CRT). Higher tiers earn premium rate multipliers.
+            </p>
+            <div class="p-3 rounded bg-dark border border-secondary mb-3">
+              <div class="d-flex justify-content-between text-muted small mb-1">
+                <span>Next Milestone Progress:</span>
+                <span id="carrierTierProgressPercent" class="text-white fw-bold">15%</span>
+              </div>
+              <div class="progress mb-2" style="height: 10px;">
+                <div id="carrierTierProgressBar" class="progress-bar bg-warning" role="progressbar" style="width: 15%"></div>
+              </div>
+              <div class="d-flex justify-content-between extra-small text-muted">
+                <span>🥉 Bronze (0 CRT, 1.0x)</span>
+                <span>🥈 Silver (300 CRT, 1.15x)</span>
+                <span>🥇 Gold (1,000+ CRT, 1.30x)</span>
+              </div>
+            </div>
+            <div class="extra-small text-muted">
+              Note: If a shipment misses its deadline or is settled with damage fault, <b>300 CRT tokens</b> are slashed from your reputation score.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 4: CARRIER HUB (Assigned Tasks) ================= -->
+    <div id="view-carrier-tasks" class="d-none">
+      <!-- Section 1: Pending Acceptance Requests -->
+      <div class="glass-card p-4 mb-4 border-warning border-opacity-50">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="fw-bold text-warning mb-0">📬 Incoming Shipment Requests (Pending Acceptance)</h5>
+          <span class="badge bg-warning text-dark" id="pendingAcceptCountBadge">1 New Offer</span>
+        </div>
+        <p class="text-muted small mb-3">
+          Shippers have assigned these freight agreements to your fleet. Review cargo specs, pickup/delivery route, and freight payout.
+          You can accept to lock in the job, or reject without any penalty.
+        </p>
+        <div id="carrierPendingAcceptList">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+
+      <!-- Section 2: Active & Historical Tasks -->
+      <div class="glass-card p-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <div>
+            <h5 class="fw-bold text-white mb-0">🚚 Active Freight Jobs & Delivery Queue</h5>
+            <p class="text-muted small mb-0">Manage accepted jobs, submit physical cargo collection photo, and sign off consignee delivery proof.</p>
+          </div>
+          
+          <!-- Filters & Sorting -->
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <div class="btn-group btn-group-sm" role="group">
+              <button type="button" class="btn filter-pill-btn active" onclick="App.filterCarrierTasks('ALL', this)">All</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('InTransit', this)">Pickup Required</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('Delivering', this)">In Transit</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('Completed', this)">Delivered</button>
+            </div>
+            <select id="carrierSortSelect" class="form-select form-select-sm form-control-dark ms-md-2" style="width: auto;" onchange="App.sortCarrierTasks()">
+              <option value="urgency">Sort: Nearest Deadline</option>
+              <option value="valueHigh">Sort: Highest Fee</option>
+            </select>
+          </div>
+        </div>
+
+        <div id="carrierShipmentsList">
+          <!-- Injected via app.js -->
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 5: ARBITER MEDIATION PORTAL ================= -->
+    <div id="view-arbiter" class="d-none">
+      <div class="glass-card p-4 mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <div>
+            <span class="badge bg-warning text-dark px-3 py-1 mb-2">Neutral Commercial Arbiter Authority</span>
+            <h4 class="fw-bold text-white mb-0">⚖️ Cargo Damage & Dispute Resolution Center</h4>
+          </div>
+          <div class="text-end">
+            <span class="text-muted small">Designated Authority:</span>
+            <div class="text-warning small font-monospace" id="arbiterContractAddress">0x000...000</div>
+          </div>
+        </div>
+        <p class="text-muted small">
+          Review contested physical cargo damage reports, inspect IPFS photographic proof, and enact legally binding settlement splits.
+        </p>
+      </div>
+
+      <div class="glass-card p-4">
+        <h5 class="fw-bold text-white mb-3">Pending Cargo Disputes Queue</h5>
+        <div id="arbiterDisputesList">
+          <div class="text-center text-muted py-5">Scanning for contested shipments...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= VIEW 6: PUBLIC AUDIT LEDGER ================= -->
+    <div id="view-ledger" class="d-none">
+      <div class="glass-card p-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <div>
+            <h4 class="fw-bold text-white mb-0">📜 Public Distributed Audit Ledger</h4>
+            <p class="text-muted small mb-0">Verifiable real-time record of all freight escrow agreements on the EVM blockchain.</p>
+          </div>
+          <div class="d-flex gap-2">
+            <select id="ledgerStatusFilter" class="form-select form-select-sm form-control-dark" onchange="App.filterLedger()">
+              <option value="ALL">All Statuses</option>
+              <option value="PendingAcceptance">Pending Acceptance</option>
+              <option value="InTransit">In Transit (Pickup Pending)</option>
+              <option value="Delivering">Delivering (Transit Active)</option>
+              <option value="Completed">Completed & Settled</option>
+              <option value="Disputed">Disputed / In Arbitration</option>
+              <option value="Refunded">Refunded (Timeout / Mediation)</option>
+              <option value="Rejected">Rejected</option>
+            </select>
+            <button class="btn btn-sm btn-outline-light" onclick="App.loadAgreements()">🔄 Refresh</button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-dark-custom align-middle">
+            <thead>
+              <tr class="text-secondary small text-uppercase">
+                <th>ID</th>
+                <th>Shipper</th>
+                <th>Carrier</th>
+                <th>Total Escrow (ETH / MYR)</th>
+                <th>Milestone Status</th>
+                <th>Deadline</th>
+                <th>Agreement State</th>
+                <th>On-Chain Action</th>
+              </tr>
+            </thead>
+            <tbody id="agreementTableBody">
+              <tr><td colspan="8" class="text-center text-muted py-5">Loading blockchain ledger...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
 
   <script src="js/app.js"></script>
 </body>
