@@ -196,7 +196,7 @@
                 <label class="form-label text-white small fw-semibold">Declared Cargo Value (RM)</label>
                 <div class="input-group">
                   <span class="input-group-text bg-dark border-secondary text-white">RM</span>
-                  <input type="number" id="createCargoValue" class="form-control form-control-dark" value="25000" min="100" placeholder="25000">
+                  <input type="number" id="createCargoValue" class="form-control form-control-dark" value="" min="100" placeholder="e.g. 25000">
                 </div>
                 <div class="extra-small text-muted mt-1">Recorded for dispute/insurance reference.</div>
               </div>
@@ -204,7 +204,7 @@
               <div class="col-md-3">
                 <label class="form-label text-white small fw-semibold">Cargo Weight (kg)</label>
                 <div class="input-group">
-                  <input type="number" id="createWeight" class="form-control form-control-dark" value="850" min="10" oninput="App.recalculateShipperQuote()">
+                  <input type="number" id="createWeight" class="form-control form-control-dark" value="" min="10" placeholder="e.g. 500" oninput="App.recalculateShipperQuote()">
                   <span class="input-group-text bg-dark border-secondary text-white">KG</span>
                 </div>
                 <div class="extra-small text-muted mt-1">Rate: RM 0.135 / kg</div>
@@ -238,7 +238,7 @@
 
                   <!-- Auto-filled Selected Address (Read-only) -->
                   <label class="extra-small text-muted mb-1">Selected Origin Coordinates & Area (Read-Only):</label>
-                  <input type="text" id="originSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="Bayan Lepas, Penang (Lat: 5.2974, Lng: 100.2762)">
+                  <input type="text" id="originSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="" placeholder="Select origin on map above or search city">
 
                   <!-- Manual Address Details -->
                   <label class="extra-small text-muted mb-1">Manual Address Details (Factory / Floor / Loading Bay):</label>
@@ -265,7 +265,7 @@
 
                   <!-- Auto-filled Selected Address (Read-only) -->
                   <label class="extra-small text-muted mb-1">Selected Destination Coordinates & Area (Read-Only):</label>
-                  <input type="text" id="destSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="Port Klang, Selangor (Lat: 3.0039, Lng: 101.3934)">
+                  <input type="text" id="destSelectedAddress" class="form-control form-control-dark mb-2 text-white" readonly value="" placeholder="Select destination on map above or search city">
 
                   <!-- Manual Address Details -->
                   <label class="extra-small text-muted mb-1">Manual Address Details (Warehouse / Gate / Contact Person):</label>
@@ -288,7 +288,7 @@
               <div class="col-md-6">
                 <label class="form-label text-white small fw-semibold">Calculated Highway Distance (km)</label>
                 <div class="input-group">
-                  <input type="number" id="createDistance" class="form-control form-control-dark" value="350" min="5" oninput="App.recalculateShipperQuote()">
+                  <input type="number" id="createDistance" class="form-control form-control-dark" value="" min="5" placeholder="Calculated automatically from route" oninput="App.recalculateShipperQuote()">
                   <span class="input-group-text bg-dark border-secondary text-white">KM</span>
                   <button class="btn btn-outline-info btn-sm" type="button" onclick="App.recalculateMapDistance()">🔄 Re-estimate</button>
                 </div>
@@ -314,16 +314,16 @@
                   <div class="row align-items-center">
                     <div class="col-md-8">
                       <div class="d-flex flex-wrap gap-3 small text-muted">
-                        <span>Base Dispatch: <b>0.002 ETH (RM 27.00)</b></span>
-                        <span>Distance Charge: <b id="quoteDistFee">0.0175 ETH (RM 236.25)</b></span>
-                        <span>Weight Charge: <b id="quoteWeightFee">0.0085 ETH (RM 114.75)</b></span>
-                        <span>Carrier Tier Multiplier: <b id="quoteMultiplier" class="text-info">1.0x</b></span>
+                        <span>Base Dispatch: <b>0.0020 ETH (RM 27.00)</b></span>
+                        <span>Distance Charge: <b id="quoteDistFee">0.0000 ETH (RM 0.00)</b></span>
+                        <span>Weight Charge: <b id="quoteWeightFee">0.0000 ETH (RM 0.00)</b></span>
+                        <span>Carrier Tier Multiplier: <b id="quoteMultiplier" class="text-info">1.00x</b></span>
                       </div>
                     </div>
                     <div class="col-md-4 text-md-end mt-2 mt-md-0">
                       <span class="extra-small text-muted text-uppercase d-block">100% Escrow Required:</span>
-                      <span class="fs-4 fw-bold text-gradient" id="quoteTotalEth">0.0280 ETH</span>
-                      <span class="text-info small ms-1" id="quoteTotalMyr">(≈ RM 378.00 MYR)</span>
+                      <span class="fs-4 fw-bold text-gradient" id="quoteTotalEth">0.0000 ETH</span>
+                      <span class="text-info small ms-1" id="quoteTotalMyr">(≈ RM 0.00 MYR)</span>
                     </div>
                   </div>
                 </div>
@@ -343,21 +343,39 @@
 
       <!-- Lower Section: Shipper's Contract Inventory & Status Filters -->
       <div class="glass-card p-4">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
           <h5 class="fw-bold text-white mb-0">📑 Your Created Freight Agreements</h5>
           
-          <!-- Filters & Sorting -->
+          <!-- Search Bar, Filters & Sorting -->
           <div class="d-flex flex-wrap gap-2 align-items-center">
-            <div class="btn-group btn-group-sm" role="group">
+            <!-- Search Bar: directly to the left of the filter buttons -->
+            <div class="input-group input-group-sm" style="width: 250px;">
+              <span class="input-group-text bg-dark border-secondary text-muted">🔍</span>
+              <input type="text" id="shipperSearchInput" class="form-control form-control-dark" placeholder="Search by cargo description..." oninput="App.onShipperSearchChange(this.value)">
+              <button class="btn btn-outline-secondary btn-sm" type="button" title="Clear search" onclick="document.getElementById('shipperSearchInput').value=''; App.onShipperSearchChange('');">✖</button>
+            </div>
+
+            <!-- Status Filter Pills with Corner Notification Badges -->
+            <div class="btn-group btn-group-sm flex-wrap" role="group">
               <button type="button" class="btn filter-pill-btn active" onclick="App.filterShipperContracts('ALL', this)">All</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('PendingAcceptance', this)">Pending Acceptance</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('InTransit', this)">Pickup Required</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Delivering', this)">In Transit</button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('PendingAcceptance', this)">
+                Pending
+                <span id="shipperBadgePending" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('InTransit', this)">
+                Pickup Required
+                <span id="shipperBadgePickup" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Delivering', this)">
+                In Transit
+                <span id="shipperBadgeTransit" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
               <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Completed', this)">Completed</button>
               <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Disputed', this)">Disputed</button>
+              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Cancelled', this)">Cancelled</button>
               <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Refunded', this)">Refunded</button>
             </div>
-            <select id="shipperSortSelect" class="form-select form-select-sm form-control-dark ms-md-2" style="width: auto;" onchange="App.sortShipperContracts()">
+            <select id="shipperSortSelect" class="form-select form-select-sm form-control-dark ms-md-1" style="width: auto;" onchange="App.sortShipperContracts()">
               <option value="newest">Sort: Newest First</option>
               <option value="oldest">Sort: Oldest First</option>
               <option value="valueHigh">Sort: Highest Escrow Value</option>
@@ -606,8 +624,173 @@
       </div>
     </div>
 
+    <!-- ================= MODAL: EXPANDED SHIPMENT DETAIL (Centralized Card) ================= -->
+    <div class="modal fade" id="shipmentDetailModal" tabindex="-1" aria-labelledby="modalShipmentTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content bg-dark text-white border border-primary border-opacity-50 shadow-2xl" style="background: rgba(15, 23, 42, 0.97) !important; backdrop-filter: blur(20px); border-radius: 1.25rem;">
+          
+          <!-- Modal Header with Title, Status & Close Cross -->
+          <div class="modal-header border-secondary border-opacity-50 px-4 py-3">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+              <span class="fs-4" id="modalShipmentIcon">📦</span>
+              <h5 class="modal-title fw-bold text-white mb-0" id="modalShipmentTitle">Freight Contract</h5>
+              <span id="modalShipmentStatusBadge" class="badge px-3 py-1">Status</span>
+              <span class="badge bg-secondary bg-opacity-50 border border-secondary text-light" id="modalShipmentIdBadge">ID #1</span>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+
+          <!-- Modal Body -->
+          <div class="modal-body p-4">
+            
+            <!-- UPPER PART: Photo Proof Comparison Gallery (Side-by-Side) -->
+            <div class="mb-4">
+              <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+                <h6 class="fw-bold text-primary mb-0 d-flex align-items-center gap-2">
+                  <span>📸</span> Photographic Chain-of-Custody Proofs (IPFS Multihash)
+                </h6>
+                <span class="extra-small text-muted" id="modalProofCountInfo">Side-by-side milestone comparison</span>
+              </div>
+              
+              <!-- Dynamic Photo Comparison Container: 1, 2, or 3 images side-by-side -->
+              <div id="modalProofGallery" class="row g-3">
+                <!-- Injected via app.js -->
+              </div>
+            </div>
+
+            <!-- MIDDLE PART: Core Shipment, Route & Escrow Specifications -->
+            <div class="row g-3">
+              <!-- Route & Location Details -->
+              <div class="col-md-6">
+                <div class="p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-50 h-100">
+                  <span class="extra-small text-uppercase text-muted fw-bold d-block mb-3">🗺️ Physical Transit Route & Manifest</span>
+                  
+                  <div class="mb-3">
+                    <span class="extra-small text-success fw-bold d-block mb-1">🟢 Origin / Pickup Location:</span>
+                    <div class="text-white small fw-semibold" id="modalOriginLocation">-</div>
+                  </div>
+
+                  <div class="mb-3">
+                    <span class="extra-small text-danger fw-bold d-block mb-1">🔴 Destination / Delivery Location:</span>
+                    <div class="text-white small fw-semibold" id="modalDestLocation">-</div>
+                  </div>
+
+                  <div class="d-flex justify-content-between pt-2 border-top border-secondary border-opacity-25 extra-small text-muted flex-wrap gap-2">
+                    <span>Declared Value: <b class="text-white" id="modalDeclaredValue">-</b></span>
+                    <span>Deadline: <b class="text-warning" id="modalDeadline">-</b></span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Escrow Financials & Participants -->
+              <div class="col-md-6">
+                <div class="p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-50 h-100">
+                  <span class="extra-small text-uppercase text-muted fw-bold d-block mb-3">🔒 On-Chain Escrow & Parties</span>
+                  
+                  <div class="d-flex justify-content-between align-items-center mb-2">
+                    <span class="small text-muted">Total Escrow Deposited:</span>
+                    <span class="fs-5 fw-bold text-gradient" id="modalTotalEscrow">-</span>
+                  </div>
+
+                  <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="small text-muted">Remaining Escrow Balance:</span>
+                    <span class="small text-info fw-bold" id="modalRemainingEscrow">-</span>
+                  </div>
+
+                  <div class="pt-2 border-top border-secondary border-opacity-25 small">
+                    <div class="d-flex justify-content-between text-muted extra-small mb-1">
+                      <span>Shipper Wallet:</span>
+                      <code class="text-info" id="modalShipperAddr">-</code>
+                    </div>
+                    <div class="d-flex justify-content-between text-muted extra-small">
+                      <span>Carrier Fleet Wallet:</span>
+                      <code class="text-info" id="modalCarrierAddr">-</code>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Milestone Progression Timeline -->
+              <div class="col-12">
+                <div class="p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-50">
+                  <span class="extra-small text-uppercase text-muted fw-bold d-block mb-2">⚡ Milestone Settlement Schedule</span>
+                  <div class="row g-2">
+                    <div class="col-md-6">
+                      <div class="p-2 rounded bg-dark border border-secondary border-opacity-40 d-flex justify-content-between align-items-center">
+                        <div>
+                          <div class="small fw-bold text-white">Milestone 1: Pickup Dispatch (30% Payout)</div>
+                          <div class="extra-small text-muted" id="modalMs1Sub">Photo proof at origin dock</div>
+                        </div>
+                        <span id="modalMs1Badge" class="badge bg-secondary">Pending</span>
+                      </div>
+                    </div>
+                    <div class="col-md-6">
+                      <div class="p-2 rounded bg-dark border border-secondary border-opacity-40 d-flex justify-content-between align-items-center">
+                        <div>
+                          <div class="small fw-bold text-white">Milestone 2: Final Delivery (70% Payout)</div>
+                          <div class="extra-small text-muted" id="modalMs2Sub">Recipient sign-off proof at destination</div>
+                        </div>
+                        <span id="modalMs2Badge" class="badge bg-secondary">Pending</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          <!-- Modal Footer: Functional Action Buttons -->
+          <div class="modal-footer border-secondary border-opacity-50 px-4 py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="extra-small text-muted">
+              💡 Press <kbd class="bg-dark text-white border border-secondary">ESC</kbd> or click outside to dismiss.
+            </div>
+            <div class="d-flex gap-2 align-items-center flex-wrap" id="modalActionButtonsContainer">
+              <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal">Close</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: IPFS PHOTO INSPECTION (Root Level) ================= -->
+    <div class="modal fade" id="ipfsPhotoModal" tabindex="-1" aria-labelledby="ipfsModalTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border border-primary border-opacity-50">
+          <div class="modal-header border-secondary">
+            <h5 class="modal-title fw-bold" id="ipfsModalTitle">📷 IPFS Cargo Inspection Photo</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body text-center">
+            <div class="mb-3 position-relative d-flex justify-content-center align-items-center" style="min-height: 220px; background: #0f172a; border-radius: 8px; overflow: hidden;">
+              <img id="ipfsModalImage" src="" alt="Cargo Photo" class="img-fluid rounded" style="max-height: 380px; object-fit: contain;">
+            </div>
+            <div class="p-2 rounded bg-black bg-opacity-50 border border-secondary text-start mb-2">
+              <span class="extra-small text-muted d-block">IPFS Content Identifier (CID):</span>
+              <div class="d-flex justify-content-between align-items-center">
+                <code class="text-info small text-break" id="ipfsModalCid">Qm...</code>
+                <button class="btn btn-outline-secondary btn-sm extra-small px-2 py-0 ms-2" onclick="navigator.clipboard.writeText(document.getElementById('ipfsModalCid').innerText); alert('IPFS CID copied to clipboard!');">Copy</button>
+              </div>
+            </div>
+            <div class="text-start small text-muted" id="ipfsModalSubtitle">
+              Decentralized photographic proof recorded on-chain.
+            </div>
+          </div>
+          <div class="modal-footer border-secondary">
+            <a id="ipfsModalExternalLink" href="#" target="_blank" class="btn btn-outline-info btn-sm">🌐 Open via IPFS Gateway</a>
+            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </main>
 
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Application Logic -->
   <script src="js/app.js"></script>
 </body>
 </html>

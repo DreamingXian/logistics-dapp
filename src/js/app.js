@@ -9,6 +9,7 @@ const App = {
   allAgreements: [],
   shipperFilter: "ALL",
   shipperSort: "newest",
+  shipperSearchTerm: "",
   carrierFilter: "ALL",
   carrierSort: "urgency",
   isCreatePanelOpen: false,
@@ -22,8 +23,8 @@ const App = {
   overviewOriginMarker: null,
   overviewDestMarker: null,
   overviewRouteLine: null,
-  originCoords: [5.2974, 100.2762], // Bayan Lepas, Penang
-  destCoords: [3.0039, 101.3934],   // Port Klang, Selangor
+  originCoords: null, // Start empty so form has no default pin
+  destCoords: null,   // Start empty so form has no default pin
 
   init: async function () {
     if (window.ethereum) {
@@ -42,7 +43,7 @@ const App = {
     }
 
     this.switchTab("disconnected");
-    this.setQuickDeadline(24);
+    // Form starts completely blank without preselected deadline
 
     const deadlineInput = document.getElementById("createExactDeadline");
     if (deadlineInput) {
@@ -416,69 +417,55 @@ const App = {
       });
     };
 
+    const defaultCenter = [4.2105, 101.9758]; // Malaysia central map center
+
     // 1. Origin Map (Interactive: keyword search, pin drag, click to pick)
     const originEl = document.getElementById("originMap");
     if (originEl && !this.originMap) {
-      this.originMap = L.map("originMap", { zoomControl: true }).setView(this.originCoords, 11);
+      this.originMap = L.map("originMap", { zoomControl: true }).setView(this.originCoords || defaultCenter, this.originCoords ? 11 : 6);
       createTileLayer().addTo(this.originMap);
 
-      this.originMarker = L.marker(this.originCoords, {
-        draggable: true,
-        title: "Origin Pickup"
-      }).addTo(this.originMap);
-      this.originMarker.bindPopup("<b>🟢 Origin Location</b><br>Bayan Lepas, Penang<br><small>Drag pin or click map to move</small>").openPopup();
+      if (this.originCoords) {
+        this.originMarker = L.marker(this.originCoords, { draggable: true, title: "Origin Pickup" }).addTo(this.originMap);
+        this.originMarker.bindPopup("<b>🟢 Origin Location</b><br><small>Drag pin or click map to move</small>").openPopup();
+        this.originMarker.on("dragend", () => {
+          const latlng = this.originMarker.getLatLng();
+          this.setOriginLocation(latlng.lat, latlng.lng);
+        });
+      }
 
       this.originMap.on("click", (e) => {
         this.setOriginLocation(e.latlng.lat, e.latlng.lng);
-      });
-
-      this.originMarker.on("dragend", () => {
-        const latlng = this.originMarker.getLatLng();
-        this.setOriginLocation(latlng.lat, latlng.lng);
       });
     }
 
     // 2. Destination Map (Interactive: keyword search, pin drag, click to pick)
     const destEl = document.getElementById("destMap");
     if (destEl && !this.destMap) {
-      this.destMap = L.map("destMap", { zoomControl: true }).setView(this.destCoords, 11);
+      this.destMap = L.map("destMap", { zoomControl: true }).setView(this.destCoords || defaultCenter, this.destCoords ? 11 : 6);
       createTileLayer().addTo(this.destMap);
 
-      this.destMarker = L.marker(this.destCoords, {
-        draggable: true,
-        title: "Destination"
-      }).addTo(this.destMap);
-      this.destMarker.bindPopup("<b>🔴 Destination Location</b><br>Port Klang, Selangor<br><small>Drag pin or click map to move</small>").openPopup();
+      if (this.destCoords) {
+        this.destMarker = L.marker(this.destCoords, { draggable: true, title: "Destination" }).addTo(this.destMap);
+        this.destMarker.bindPopup("<b>🔴 Destination Location</b><br><small>Drag pin or click map to move</small>").openPopup();
+        this.destMarker.on("dragend", () => {
+          const latlng = this.destMarker.getLatLng();
+          this.setDestLocation(latlng.lat, latlng.lng);
+        });
+      }
 
       this.destMap.on("click", (e) => {
         this.setDestLocation(e.latlng.lat, e.latlng.lng);
       });
-
-      this.destMarker.on("dragend", () => {
-        const latlng = this.destMarker.getLatLng();
-        this.setDestLocation(latlng.lat, latlng.lng);
-      });
     }
 
     // 3. Route Overview Map (Bigger Map, Strictly Read-Only Result Preview)
-    // Note: No click event listeners are added to routeOverviewMap to prevent manual editing here.
     const routeEl = document.getElementById("routeOverviewMap");
     if (routeEl && !this.routeOverviewMap) {
       this.routeOverviewMap = L.map("routeOverviewMap", {
         zoomControl: true
-      }).setView([4.2105, 101.9758], 7);
+      }).setView(defaultCenter, 6);
       createTileLayer().addTo(this.routeOverviewMap);
-
-      this.overviewOriginMarker = L.marker(this.originCoords, {
-        interactive: true,
-        title: "Origin Point (Read-Only)"
-      }).addTo(this.routeOverviewMap).bindPopup("<b>🟢 Origin:</b> Bayan Lepas, Penang");
-
-      this.overviewDestMarker = L.marker(this.destCoords, {
-        interactive: true,
-        title: "Destination Point (Read-Only)"
-      }).addTo(this.routeOverviewMap).bindPopup("<b>🔴 Destination:</b> Port Klang, Selangor");
-
       this.updateOverviewMap();
     }
 
@@ -498,21 +485,27 @@ const App = {
 
   setOriginLocation: function (lat, lng, addressLabel) {
     this.originCoords = [lat, lng];
-    if (this.originMarker) {
-      this.originMarker.setLatLng(this.originCoords);
-    }
     if (this.originMap) {
+      if (!this.originMarker) {
+        this.originMarker = L.marker(this.originCoords, { draggable: true, title: "Origin Pickup" }).addTo(this.originMap);
+        this.originMarker.on("dragend", () => {
+          const latlng = this.originMarker.getLatLng();
+          this.setOriginLocation(latlng.lat, latlng.lng);
+        });
+      } else {
+        this.originMarker.setLatLng(this.originCoords);
+      }
       this.originMap.panTo(this.originCoords);
     }
 
     const addrInput = document.getElementById("originSelectedAddress");
     if (addressLabel) {
-      addrInput.value = `${addressLabel} (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
+      if (addrInput) addrInput.value = `${addressLabel} (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
       if (this.originMarker) {
         this.originMarker.bindPopup(`<b>🟢 Origin:</b> ${addressLabel}`).openPopup();
       }
     } else {
-      addrInput.value = `Custom Pinpoint (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
+      if (addrInput) addrInput.value = `Custom Pinpoint (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
       this.reverseGeocode(lat, lng, "origin");
     }
 
@@ -522,21 +515,27 @@ const App = {
 
   setDestLocation: function (lat, lng, addressLabel) {
     this.destCoords = [lat, lng];
-    if (this.destMarker) {
-      this.destMarker.setLatLng(this.destCoords);
-    }
     if (this.destMap) {
+      if (!this.destMarker) {
+        this.destMarker = L.marker(this.destCoords, { draggable: true, title: "Destination" }).addTo(this.destMap);
+        this.destMarker.on("dragend", () => {
+          const latlng = this.destMarker.getLatLng();
+          this.setDestLocation(latlng.lat, latlng.lng);
+        });
+      } else {
+        this.destMarker.setLatLng(this.destCoords);
+      }
       this.destMap.panTo(this.destCoords);
     }
 
     const addrInput = document.getElementById("destSelectedAddress");
     if (addressLabel) {
-      addrInput.value = `${addressLabel} (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
+      if (addrInput) addrInput.value = `${addressLabel} (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
       if (this.destMarker) {
         this.destMarker.bindPopup(`<b>🔴 Destination:</b> ${addressLabel}`).openPopup();
       }
     } else {
-      addrInput.value = `Custom Pinpoint (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
+      if (addrInput) addrInput.value = `Custom Pinpoint (Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)})`;
       this.reverseGeocode(lat, lng, "dest");
     }
 
@@ -547,10 +546,27 @@ const App = {
   updateOverviewMap: function () {
     if (!this.routeOverviewMap) return;
 
-    if (this.overviewOriginMarker) {
+    if (!this.originCoords || !this.destCoords) {
+      if (this.overviewRouteLine) {
+        this.routeOverviewMap.removeLayer(this.overviewRouteLine);
+        this.overviewRouteLine = null;
+      }
+      return;
+    }
+
+    if (!this.overviewOriginMarker) {
+      this.overviewOriginMarker = L.marker(this.originCoords, { interactive: true, title: "Origin Point (Read-Only)" })
+        .addTo(this.routeOverviewMap)
+        .bindPopup("<b>🟢 Origin Location</b>");
+    } else {
       this.overviewOriginMarker.setLatLng(this.originCoords);
     }
-    if (this.overviewDestMarker) {
+
+    if (!this.overviewDestMarker) {
+      this.overviewDestMarker = L.marker(this.destCoords, { interactive: true, title: "Destination Point (Read-Only)" })
+        .addTo(this.routeOverviewMap)
+        .bindPopup("<b>🔴 Destination Location</b>");
+    } else {
       this.overviewDestMarker.setLatLng(this.destCoords);
     }
 
@@ -640,6 +656,15 @@ const App = {
   },
 
   recalculateMapDistance: function () {
+    if (!this.originCoords || !this.destCoords) {
+      const distInput = document.getElementById("createDistance");
+      if (distInput && !distInput.value) {
+        distInput.value = "";
+      }
+      this.recalculateShipperQuote();
+      return;
+    }
+
     // Geodesic Haversine calculation with +25% highway curvature multiplier
     const [lat1, lon1] = this.originCoords;
     const [lat2, lon2] = this.destCoords;
@@ -692,15 +717,31 @@ const App = {
   },
 
   recalculateShipperQuote: function () {
-    const dist = parseFloat(document.getElementById("createDistance").value) || 0;
-    const weight = parseFloat(document.getElementById("createWeight").value) || 0;
+    const distInput = document.getElementById("createDistance");
+    const weightInput = document.getElementById("createWeight");
+    const dist = distInput && distInput.value ? parseFloat(distInput.value) : 0;
+    const weight = weightInput && weightInput.value ? parseFloat(weightInput.value) : 0;
     
     // Read multiplier from selected carrier
     const select = document.getElementById("shipperCarrierSelect");
-    const selectedOpt = select.options[select.selectedIndex];
+    const selectedOpt = select && select.selectedIndex >= 0 ? select.options[select.selectedIndex] : null;
     let multiplier = 1.0;
     if (selectedOpt && selectedOpt.dataset.multiplier) {
       multiplier = parseFloat(selectedOpt.dataset.multiplier);
+    }
+
+    if (dist === 0 && weight === 0) {
+      const quoteDist = document.getElementById("quoteDistFee");
+      if (quoteDist) quoteDist.innerText = "0.0000 ETH (RM 0.00)";
+      const quoteWeight = document.getElementById("quoteWeightFee");
+      if (quoteWeight) quoteWeight.innerText = "0.0000 ETH (RM 0.00)";
+      const quoteMult = document.getElementById("quoteMultiplier");
+      if (quoteMult) quoteMult.innerText = `${multiplier.toFixed(2)}x`;
+      const quoteEth = document.getElementById("quoteTotalEth");
+      if (quoteEth) quoteEth.innerText = "0.0000 ETH";
+      const quoteMyr = document.getElementById("quoteTotalMyr");
+      if (quoteMyr) quoteMyr.innerText = "(≈ RM 0.00 MYR)";
+      return;
     }
 
     const baseFee = 0.0020;
@@ -709,11 +750,83 @@ const App = {
     const totalEth = (baseFee + distFee + weightFee) * multiplier;
     const totalMyr = totalEth * this.ethToMyrRate;
 
-    document.getElementById("quoteDistFee").innerText = `${distFee.toFixed(4)} ETH (RM ${(distFee * this.ethToMyrRate).toFixed(2)})`;
-    document.getElementById("quoteWeightFee").innerText = `${weightFee.toFixed(4)} ETH (RM ${(weightFee * this.ethToMyrRate).toFixed(2)})`;
-    document.getElementById("quoteMultiplier").innerText = `${multiplier.toFixed(2)}x`;
-    document.getElementById("quoteTotalEth").innerText = `${totalEth.toFixed(4)} ETH`;
-    document.getElementById("quoteTotalMyr").innerText = `(≈ RM ${totalMyr.toFixed(2)} MYR)`;
+    const quoteDist = document.getElementById("quoteDistFee");
+    if (quoteDist) quoteDist.innerText = `${distFee.toFixed(4)} ETH (RM ${(distFee * this.ethToMyrRate).toFixed(2)})`;
+    const quoteWeight = document.getElementById("quoteWeightFee");
+    if (quoteWeight) quoteWeight.innerText = `${weightFee.toFixed(4)} ETH (RM ${(weightFee * this.ethToMyrRate).toFixed(2)})`;
+    const quoteMult = document.getElementById("quoteMultiplier");
+    if (quoteMult) quoteMult.innerText = `${multiplier.toFixed(2)}x`;
+    const quoteEth = document.getElementById("quoteTotalEth");
+    if (quoteEth) quoteEth.innerText = `${totalEth.toFixed(4)} ETH`;
+    const quoteMyr = document.getElementById("quoteTotalMyr");
+    if (quoteMyr) quoteMyr.innerText = `(≈ RM ${totalMyr.toFixed(2)} MYR)`;
+  },
+
+  clearCreateAgreementForm: function () {
+    const desc = document.getElementById("createCargoDesc");
+    if (desc) desc.value = "";
+
+    const carrierSelect = document.getElementById("shipperCarrierSelect");
+    if (carrierSelect) carrierSelect.value = "";
+    const carrierDetails = document.getElementById("carrierSelectedDetails");
+    if (carrierDetails) carrierDetails.innerText = "Select a carrier to review verified tier & reliability multiplier.";
+
+    const cargoVal = document.getElementById("createCargoValue");
+    if (cargoVal) cargoVal.value = "";
+    const weight = document.getElementById("createWeight");
+    if (weight) weight.value = "";
+
+    const photoInput = document.getElementById("createCargoPhotoInput");
+    if (photoInput) photoInput.value = "";
+    const photoPreview = document.getElementById("cargoPhotoPreview");
+    if (photoPreview) {
+      photoPreview.src = "";
+      photoPreview.classList.add("d-none");
+    }
+
+    const origSearch = document.getElementById("originSearchInput");
+    if (origSearch) origSearch.value = "";
+    const origAddr = document.getElementById("originSelectedAddress");
+    if (origAddr) origAddr.value = "";
+    const origDet = document.getElementById("originAddressDetails");
+    if (origDet) origDet.value = "";
+
+    const destSearch = document.getElementById("destSearchInput");
+    if (destSearch) destSearch.value = "";
+    const destAddr = document.getElementById("destSelectedAddress");
+    if (destAddr) destAddr.value = "";
+    const destDet = document.getElementById("destAddressDetails");
+    if (destDet) destDet.value = "";
+
+    const dist = document.getElementById("createDistance");
+    if (dist) dist.value = "";
+    const deadline = document.getElementById("createExactDeadline");
+    if (deadline) deadline.value = "";
+
+    this.originCoords = null;
+    this.destCoords = null;
+    if (this.originMarker && this.originMap) {
+      this.originMap.removeLayer(this.originMarker);
+      this.originMarker = null;
+    }
+    if (this.destMarker && this.destMap) {
+      this.destMap.removeLayer(this.destMarker);
+      this.destMarker = null;
+    }
+    if (this.overviewOriginMarker && this.routeOverviewMap) {
+      this.routeOverviewMap.removeLayer(this.overviewOriginMarker);
+      this.overviewOriginMarker = null;
+    }
+    if (this.overviewDestMarker && this.routeOverviewMap) {
+      this.routeOverviewMap.removeLayer(this.overviewDestMarker);
+      this.overviewDestMarker = null;
+    }
+    if (this.overviewRouteLine && this.routeOverviewMap) {
+      this.routeOverviewMap.removeLayer(this.overviewRouteLine);
+      this.overviewRouteLine = null;
+    }
+
+    this.recalculateShipperQuote();
   },
 
   loadCarriersDropdown: async function () {
@@ -728,24 +841,24 @@ const App = {
       const rep = await this.tokenContract.methods.balanceOf(carrierAddr).call();
 
       let tier = "🥉 Bronze";
-      let mult = "1.00";
+      let multiplier = "1.00";
       if (parseInt(rep) >= 1000) {
-        tier = "🥇 Gold (1.30x)";
-        mult = "1.30";
+        tier = "🥇 Gold";
+        multiplier = "1.30";
       } else if (parseInt(rep) >= 300) {
-        tier = "🥈 Silver (1.15x)";
-        mult = "1.15";
+        tier = "🥈 Silver";
+        multiplier = "1.15";
       }
 
       const opt = document.createElement("option");
       opt.value = carrierAddr;
       opt.text = `${carrierUser.name} [${tier} - ${rep} CRT] (${carrierAddr.substring(0, 6)}...${carrierAddr.substring(38)})`;
-      opt.dataset.multiplier = mult;
+      opt.dataset.multiplier = multiplier;
       select.appendChild(opt);
     }
 
-    // Demo fallback carriers if none registered
-    if (parseInt(count) === 0) {
+    // If no carriers registered yet, provide demo entries
+    if (count == 0) {
       const demoOptions = [
         { name: "SwiftLogistics Fleet A", tier: "🥇 Gold (1.30x)", rep: "1200 CRT", mult: "1.30", addr: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8" },
         { name: "PenangTrans Inter-State", tier: "🥈 Silver (1.15x)", rep: "450 CRT", mult: "1.15", addr: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC" },
@@ -779,7 +892,7 @@ const App = {
     const totalEthStr = document.getElementById("quoteTotalEth").innerText.replace(" ETH", "").trim();
 
     if (!carrier || !this.web3.utils.isAddress(carrier)) {
-      return alert("Please choose a valid registered carrier!");
+      return alert("Please choose a designated registered carrier!");
     }
     if (!deadlineInput) {
       return alert("Please set an exact delivery completion deadline!");
@@ -790,41 +903,94 @@ const App = {
       return alert("The deadline must be a future date and time!");
     }
 
-    const cargoDesc = document.getElementById("createCargoDesc").value.trim() || "Commercial Freight Cargo";
+    const cargoDesc = document.getElementById("createCargoDesc").value.trim();
+    if (!cargoDesc) {
+      return alert("Please enter the cargo description / item manifest!");
+    }
+
     const originAddress = document.getElementById("originSelectedAddress").value;
+    if (!originAddress) {
+      return alert("Please select an origin / pickup location on the map or search!");
+    }
     const originDetails = document.getElementById("originAddressDetails").value.trim();
+
     const destAddress = document.getElementById("destSelectedAddress").value;
+    if (!destAddress) {
+      return alert("Please select a destination / delivery location on the map or search!");
+    }
     const destDetails = document.getElementById("destAddressDetails").value.trim();
-    const cargoVal = document.getElementById("createCargoValue").value || "25000";
-    const dist = document.getElementById("createDistance").value || "350";
+
+    const cargoVal = document.getElementById("createCargoValue").value;
+    if (!cargoVal || parseFloat(cargoVal) <= 0) {
+      return alert("Please enter the declared cargo value (RM)!");
+    }
+
+    const cargoWeight = document.getElementById("createWeight").value;
+    if (!cargoWeight || parseFloat(cargoWeight) <= 0) {
+      return alert("Please enter the cargo weight (kg)!");
+    }
+
+    const originDisplay = originDetails ? `${originAddress} (${originDetails})` : originAddress;
+    const destDisplay = destDetails ? `${destAddress} (${destDetails})` : destAddress;
+    const declaredValNum = parseInt(cargoVal) || 25000;
+
+    // 1. Upload initial photo to IPFS service
+    let ipfsPhotoCid = "QmDefaultCargoConditionProof";
+    const photoInput = document.getElementById("createCargoPhotoInput");
+    if (photoInput && photoInput.files && photoInput.files[0]) {
+      const fd = new FormData();
+      fd.append("photo", photoInput.files[0]);
+      try {
+        const upRes = await fetch("/api/upload-ipfs", { method: "POST", body: fd });
+        const upData = await upRes.json();
+        if (upData && upData.cid) {
+          ipfsPhotoCid = upData.cid;
+          console.log("[IPFS] Cargo condition photo uploaded with CID:", ipfsPhotoCid);
+        }
+      } catch (uploadErr) {
+        console.warn("[IPFS] Upload fallback:", uploadErr);
+      }
+    }
+
+    // 2. Dispatch on-chain agreement with CargoSpec struct
+    const cargoSpec = [
+      cargoDesc,
+      originDisplay,
+      destDisplay,
+      ipfsPhotoCid,
+      declaredValNum
+    ];
 
     try {
       const weiVal = this.web3.utils.toWei(totalEthStr, "ether");
 
-      await this.escrowContract.methods.createAgreement(carrier, deadlineTimestamp).send({
+      await this.escrowContract.methods.createAgreement(
+        carrier,
+        deadlineTimestamp,
+        cargoSpec
+      ).send({
         from: this.account,
         value: weiVal
       });
 
-      const newTotal = await this.escrowContract.methods.totalAgreements().call();
-      const originDisplay = originDetails ? `${originAddress} (${originDetails})` : originAddress;
-      const destDisplay = destDetails ? `${destAddress} (${destDetails})` : destAddress;
+      alert(`✅ Freight Agreement dispatched on-chain!\n• Status: Pending Carrier Acceptance\n• Escrow Locked: ${totalEthStr} ETH\n• IPFS Proof CID: ${ipfsPhotoCid}`);
+      
+      // Close creation panel and clear all form inputs for next time
+      if (this.isCreatePanelOpen) {
+        this.toggleCreateAgreementPanel();
+      }
+      this.clearCreateAgreementForm();
 
-      localStorage.setItem(`agreement_meta_${newTotal}`, JSON.stringify({
-        cargoTitle: cargoDesc,
-        origin: originDisplay,
-        dest: destDisplay,
-        cargoValue: `RM ${parseFloat(cargoVal).toLocaleString()}`,
-        distance: `${dist} km`
-      }));
-
-      alert("Freight agreement dispatched! Status: Pending Carrier Acceptance (24h window).");
-      this.toggleCreateAgreementPanel();
       await this.refreshUI();
     } catch (err) {
       console.error(err);
       alert("Agreement creation failed: " + (err.message || err));
     }
+  },
+
+  onShipperSearchChange: function (term) {
+    this.shipperSearchTerm = (term || "").trim().toLowerCase();
+    this.renderShipperView();
   },
 
   filterShipperContracts: function (status, btn) {
@@ -899,21 +1065,25 @@ const App = {
 
       for (let i = 1; i <= parseInt(total); i++) {
         const ag = await this.escrowContract.methods.getAgreementDetails(i).call();
+        const cargo = await this.escrowContract.methods.getAgreementCargo(i).call();
         const ms1 = await this.escrowContract.methods.getMilestoneDetails(i, 0).call();
         const ms2 = await this.escrowContract.methods.getMilestoneDetails(i, 1).call();
-        let savedMeta = {};
-        try {
-          savedMeta = JSON.parse(localStorage.getItem(`agreement_meta_${i}`) || "{}");
-        } catch (e) {}
+
         this.allAgreements.push({
-          ...ag,
+          id: ag.id,
+          shipper: ag.shipper,
+          carrier: ag.carrier,
+          totalValue: ag.totalValue,
+          remainingBalance: ag.remainingBalance,
+          deadline: ag.deadline,
+          status: ag.status,
+          cargoTitle: cargo.cargoTitle || `Freight Contract #${i}`,
+          origin: cargo.originLocation || "Origin Hub",
+          dest: cargo.destLocation || "Destination Hub",
+          initialPhotoIpfs: cargo.initialPhotoIpfs || "QmDefaultCargoProof",
+          declaredValue: cargo.declaredValue || "25000",
           ms1,
-          ms2,
-          cargoTitle: savedMeta.cargoTitle || `Freight Contract #${i}`,
-          origin: savedMeta.origin || "Penang Logistics Hub",
-          dest: savedMeta.dest || "Port Klang Westports",
-          cargoValue: savedMeta.cargoValue || "RM 25,000",
-          distance: savedMeta.distance || "350 km"
+          ms2
         });
       }
 
@@ -927,54 +1097,68 @@ const App = {
     }
   },
 
+  updateShipperFilterBadges: function () {
+    if (!this.allAgreements || !this.account) return;
+    const myAgreements = this.allAgreements.filter(ag => ag.shipper && ag.shipper.toLowerCase() === this.account.toLowerCase());
+
+    const pendingCount = myAgreements.filter(ag => parseInt(ag.status) === 0).length;
+    const pickupCount = myAgreements.filter(ag => parseInt(ag.status) === 1).length;
+    const transitCount = myAgreements.filter(ag => parseInt(ag.status) === 2).length;
+
+    const pendingBadge = document.getElementById("shipperBadgePending");
+    const pickupBadge = document.getElementById("shipperBadgePickup");
+    const transitBadge = document.getElementById("shipperBadgeTransit");
+
+    if (pendingBadge) {
+      pendingBadge.innerText = pendingCount;
+      if (pendingCount > 0) {
+        pendingBadge.classList.remove("d-none");
+      } else {
+        pendingBadge.classList.add("d-none");
+      }
+    }
+
+    if (pickupBadge) {
+      pickupBadge.innerText = pickupCount;
+      if (pickupCount > 0) {
+        pickupBadge.classList.remove("d-none");
+      } else {
+        pickupBadge.classList.add("d-none");
+      }
+    }
+
+    if (transitBadge) {
+      transitBadge.innerText = transitCount;
+      if (transitCount > 0) {
+        transitBadge.classList.remove("d-none");
+      } else {
+        transitBadge.classList.add("d-none");
+      }
+    }
+  },
+
   renderShipperView: function () {
     const container = document.getElementById("shipperShipmentsList");
     if (!container) return;
 
-    let items = this.allAgreements.filter(ag => ag.shipper.toLowerCase() === this.account.toLowerCase());
+    this.updateShipperFilterBadges();
 
-    // Demo contracts if none live
-    if (items.length === 0) {
-      items = [
-        {
-          id: 101,
-          cargoTitle: "Industrial Microcontroller PCBs (5 Pallets)",
-          origin: "Bayan Lepas, Penang",
-          dest: "Port Klang, Selangor",
-          cargoValue: "RM 45,000",
-          shipper: this.account,
-          carrier: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-          totalValue: this.web3.utils.toWei("0.0295", "ether"),
-          remainingBalance: this.web3.utils.toWei("0.02065", "ether"),
-          deadline: Math.floor(Date.now() / 1000) + 1440 * 60,
-          status: "2", // Delivering
-          ms1: { completed: true, approved: true },
-          ms2: { completed: true, approved: false },
-          demo: true
-        },
-        {
-          id: 102,
-          cargoTitle: "Commercial Refrigeration Motors (2 Units)",
-          origin: "Ipoh Industrial Park, Perak",
-          dest: "Shah Alam Hub, Selangor",
-          cargoValue: "RM 18,000",
-          shipper: this.account,
-          carrier: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC",
-          totalValue: this.web3.utils.toWei("0.0180", "ether"),
-          remainingBalance: this.web3.utils.toWei("0.0180", "ether"),
-          deadline: Math.floor(Date.now() / 1000) + 3600,
-          status: "0", // PendingAcceptance
-          ms1: { completed: false, approved: false },
-          ms2: { completed: false, approved: false },
-          demo: true
-        }
-      ];
-    }
+    let items = this.allAgreements.filter(ag => ag.shipper.toLowerCase() === this.account.toLowerCase());
 
     const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
 
     if (this.shipperFilter !== "ALL") {
-      items = items.filter(ag => (statusNames[parseInt(ag.status)] || "InTransit") === this.shipperFilter);
+      items = items.filter(ag => (statusNames[parseInt(ag.status)] || "PendingAcceptance") === this.shipperFilter);
+    }
+
+    if (this.shipperSearchTerm) {
+      items = items.filter(ag => {
+        const title = (ag.cargoTitle || "").toLowerCase();
+        const idStr = String(ag.id);
+        const origin = (ag.origin || "").toLowerCase();
+        const dest = (ag.dest || "").toLowerCase();
+        return title.includes(this.shipperSearchTerm) || idStr.includes(this.shipperSearchTerm) || origin.includes(this.shipperSearchTerm) || dest.includes(this.shipperSearchTerm);
+      });
     }
 
     if (this.shipperSort === "oldest") {
@@ -986,52 +1170,89 @@ const App = {
     }
 
     if (items.length === 0) {
-      container.innerHTML = `<div class="text-center text-muted py-5">No agreements matching the "${this.shipperFilter}" filter.</div>`;
+      const searchNotice = this.shipperSearchTerm ? 
+        `No freight agreements found matching "<b>${this.shipperSearchTerm}</b>".` :
+        "You haven't created any freight escrow contracts matching this filter yet.";
+
+      container.innerHTML = `
+        <div class="text-center py-5 glass-card">
+          <div class="display-6 mb-2">📦</div>
+          <h5 class="text-white fw-bold mb-1">No Shipment Agreements Found</h5>
+          <p class="text-muted small mb-3">${searchNotice}</p>
+          <button class="btn btn-primary btn-glow btn-sm px-4" onclick="App.toggleCreateAgreementPanel()">➕ Create New Shipment Agreement</button>
+        </div>
+      `;
       return;
     }
 
     let html = "";
     items.forEach(ag => {
       const statusIdx = parseInt(ag.status);
-      const statusName = statusNames[statusIdx] || "InTransit";
+      const statusName = statusNames[statusIdx] || "PendingAcceptance";
       const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
       const myrVal = (totalEth * this.ethToMyrRate).toFixed(2);
       const deadlineDate = new Date(parseInt(ag.deadline) * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 
       let actionButtons = "";
       if (statusIdx === 0) {
-        actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="${ag.demo ? 'alert(\'Demo cancel\')' : `App.cancelAgreement(${ag.id})`}">❌ Cancel Request (100% Refund)</button>`;
+        actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id})">❌ Cancel Agreement (100% Refund)</button>`;
       }
       if (statusIdx === 1 && !ag.ms1.completed) {
-        actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="${ag.demo ? 'alert(\'Demo cancel\')' : `App.cancelAgreement(${ag.id})`}">❌ Cancel Before Pickup</button>`;
+        actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id})">❌ Cancel Before Pickup (100% Refund)</button>`;
       }
       if (statusIdx === 1 && ag.ms1.completed && !ag.ms1.approved) {
-        actionButtons += `<button class="btn btn-sm btn-primary me-2" onclick="${ag.demo ? 'alert(\'Demo approve\')' : `App.approveMilestone(${ag.id}, 0)`}">✅ Approve Pickup (Release 30%)</button>`;
+        actionButtons += `<button class="btn btn-sm btn-primary me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 0)">✅ Approve Pickup (Release 30%)</button>`;
       }
       if (statusIdx === 2 && ag.ms2.completed && !ag.ms2.approved) {
-        actionButtons += `<button class="btn btn-sm btn-success me-2" onclick="${ag.demo ? 'alert(\'Demo approve\')' : `App.approveMilestone(${ag.id}, 1)`}">✅ Approve Delivery (Release 70%)</button>`;
-        actionButtons += `<button class="btn btn-sm btn-warning me-2" onclick="${ag.demo ? 'alert(\'Demo dispute\')' : `App.raiseDispute(${ag.id})`}">⚠️ Raise Cargo Dispute</button>`;
+        actionButtons += `<button class="btn btn-sm btn-success me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1)">✅ Approve Delivery (Release 70%)</button>`;
+        actionButtons += `<button class="btn btn-sm btn-warning me-2" onclick="event.stopPropagation(); App.raiseDispute(${ag.id})">⚠️ Raise Cargo Dispute</button>`;
       }
 
+      // Conspicuous contextual card footer status
+      let footerStatusHtml = "";
+      if (actionButtons) {
+        footerStatusHtml = actionButtons;
+      } else if (statusIdx === 6) { // Cancelled
+        footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Agreement Cancelled • Escrow Fully Refunded</span>`;
+      } else if (statusIdx === 3) { // Completed
+        footerStatusHtml = `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">✅ Completed & Fully Settled</span>`;
+      } else if (statusIdx === 4) { // Refunded
+        footerStatusHtml = `<span class="badge bg-secondary bg-opacity-25 border border-secondary text-light px-3 py-1 fw-bold">↩️ Escrow Refunded</span>`;
+      } else if (statusIdx === 7) { // Rejected
+        footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">❌ Carrier Declined Agreement</span>`;
+      } else if (statusIdx === 5) { // Disputed
+        footerStatusHtml = `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⚠️ Under Arbiter Mediation</span>`;
+      } else if (statusIdx === 0) { // PendingAcceptance
+        footerStatusHtml = `<span class="text-warning extra-small">⏳ Awaiting Carrier Acceptance</span>`;
+      } else {
+        footerStatusHtml = `<span class="text-muted extra-small">🚚 Transit in progress</span>`;
+      }
+
+      const photoBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
+        `<button class="btn btn-sm btn-outline-info py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof (IPFS)</button>` : "";
+
       html += `
-        <div class="shipment-card ${ag.demo ? 'border-info border-opacity-50' : ''}">
-          <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="shipment-card" onclick="App.openShipmentDetailModal(${ag.id})" title="Click to expand full centralized overview and side-by-side photo proofs">
+          <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
             <div>
               <span class="fw-bold text-white fs-5">${ag.cargoTitle || `Freight Contract #${ag.id}`}</span>
-              ${ag.demo ? '<span class="badge bg-info text-dark ms-2">Demo Data</span>' : ''}
+              ${photoBtn}
             </div>
             <span class="badge badge-status-${statusName.toLowerCase()} px-3 py-1">${statusName}</span>
           </div>
           <div class="row g-2 text-muted small mb-3">
-            <div class="col-md-6">Route: <b>${ag.origin || 'Penang'}</b> ➔ <b>${ag.dest || 'Port Klang'}</b></div>
-            <div class="col-md-6 text-md-end">Declared Value: <b class="text-white">${ag.cargoValue || 'RM 25,000'}</b></div>
-            <div class="col-md-6">Carrier Fleet: <code>${ag.carrier}</code></div>
+            <div class="col-md-6">Route: <b>${ag.origin}</b> ➔ <b>${ag.dest}</b></div>
+            <div class="col-md-6 text-md-end">Declared Value: <b class="text-white">RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}</b></div>
+            <div class="col-md-6">Carrier Fleet: <code>${ag.carrier.substring(0, 6)}...${ag.carrier.substring(38)}</code></div>
             <div class="col-md-6 text-md-end">Escrow Deposit: <b class="text-white fs-6">${totalEth} ETH</b> <span class="text-info">(RM ${parseFloat(myrVal).toLocaleString()})</span></div>
-            <div class="col-md-6">Milestone 1 (Pickup 30%): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms1.completed ? '<span class="text-warning fw-bold">Verification Submitted</span>' : 'Pending')}</div>
-            <div class="col-md-6 text-md-end">Milestone 2 (Delivery 70%): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms2.completed ? '<span class="text-warning fw-bold">Sign-off Submitted</span>' : 'Pending')}</div>
+            <div class="col-md-6">Milestone 1 (Pickup 30%): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms1.completed ? '<span class="text-warning fw-bold">Verification Submitted</span>' : '<span class="text-muted">Pending</span>')}</div>
+            <div class="col-md-6 text-md-end">Milestone 2 (Delivery 70%): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms2.completed ? '<span class="text-warning fw-bold">Sign-off Submitted</span>' : '<span class="text-muted">Pending</span>')}</div>
             <div class="col-12 text-muted">Delivery Deadline: <b>${deadlineDate}</b></div>
           </div>
-          <div class="d-flex justify-content-end">${actionButtons || '<span class="text-muted extra-small">Waiting on Carrier progress</span>'}</div>
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
+            <span class="extra-small text-info opacity-75">🔍 Click card to expand details & proofs ➔</span>
+            <div>${footerStatusHtml}</div>
+          </div>
         </div>
       `;
     });
@@ -1220,28 +1441,21 @@ const App = {
 
     let list = [...agreementsList];
     if (list.length === 0) {
-      list = [
-        {
-          id: 1,
-          shipper: "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-          carrier: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
-          totalValue: this.web3.utils.toWei("0.0295", "ether"),
-          deadline: Math.floor(Date.now() / 1000) + 1440 * 60,
-          status: "2",
-          ms1: { approved: true },
-          ms2: { approved: false }
-        }
-      ];
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">No blockchain escrow records found on-chain. Dispatched agreements will appear here permanently indexed.</td></tr>`;
+      return;
     }
 
     const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
 
     list.forEach(ag => {
       const statusIdx = parseInt(ag.status);
-      const statusName = statusNames[statusIdx] || "InTransit";
+      const statusName = statusNames[statusIdx] || "PendingAcceptance";
       const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
       const myrVal = (totalEth * this.ethToMyrRate).toFixed(2);
       const deadlineDate = new Date(parseInt(ag.deadline) * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+
+      const ipfsBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
+        `<button class="btn btn-sm btn-outline-primary extra-small px-2 py-0 ms-1" onclick="App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 IPFS</button>` : "";
 
       tbody.innerHTML += `
         <tr>
@@ -1255,7 +1469,10 @@ const App = {
           </td>
           <td>${deadlineDate}</td>
           <td><span class="badge badge-status-${statusName.toLowerCase()}">${statusName}</span></td>
-          <td><button class="btn btn-sm btn-outline-info" onclick="App.inspectAgreement(${ag.id})">Audit Details</button></td>
+          <td>
+            <button class="btn btn-sm btn-outline-info extra-small px-2 py-0" onclick="App.inspectAgreement(${ag.id})">🔍 Audit</button>
+            ${ipfsBtn}
+          </td>
         </tr>
       `;
     });
@@ -1268,21 +1485,370 @@ const App = {
     if (filter === "ALL") {
       this.renderLedgerTable(this.allAgreements);
     } else {
-      const filtered = this.allAgreements.filter(ag => (statusNames[parseInt(ag.status)] || "InTransit") === filter);
+      const filtered = this.allAgreements.filter(ag => (statusNames[parseInt(ag.status)] || "PendingAcceptance") === filter);
       this.renderLedgerTable(filtered);
+    }
+  },
+
+  showIpfsModal: function (cid, title) {
+    const modalEl = document.getElementById("ipfsPhotoModal");
+    if (!modalEl) return;
+
+    document.getElementById("ipfsModalTitle").innerText = title ? `📷 ${title} - IPFS Proof` : "📷 IPFS Cargo Inspection Photo";
+    document.getElementById("ipfsModalCid").innerText = cid;
+
+    const imgEl = document.getElementById("ipfsModalImage");
+    imgEl.onerror = function () {
+      this.onerror = null;
+      this.src = `https://gateway.pinata.cloud/ipfs/${cid}`;
+    };
+    imgEl.src = `/ipfs/${cid}`;
+
+    const extLink = document.getElementById("ipfsModalExternalLink");
+    extLink.href = `https://gateway.pinata.cloud/ipfs/${cid}`;
+
+    try {
+      if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+      } else {
+        modalEl.classList.add("show");
+        modalEl.style.display = "block";
+      }
+    } catch (e) {
+      console.error("Error opening IPFS modal:", e);
+    }
+  },
+
+  hideShipmentDetailModal: function () {
+    const modalEl = document.getElementById("shipmentDetailModal");
+    if (modalEl && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+      const modal = bootstrap.Modal.getInstance(modalEl);
+      if (modal) modal.hide();
+    }
+  },
+
+  openShipmentDetailModal: function (id) {
+    const ag = this.allAgreements.find(a => String(a.id) === String(id));
+    if (!ag) {
+      alert("Shipment contract #" + id + " not found.");
+      return;
+    }
+
+    const modalEl = document.getElementById("shipmentDetailModal");
+    if (!modalEl) return;
+
+    const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
+    const statusIdx = parseInt(ag.status);
+    const statusName = statusNames[statusIdx] || "PendingAcceptance";
+
+    // 1. Header Information
+    const titleEl = document.getElementById("modalShipmentTitle");
+    if (titleEl) titleEl.innerText = ag.cargoTitle || `Freight Contract #${ag.id}`;
+
+    const idBadgeEl = document.getElementById("modalShipmentIdBadge");
+    if (idBadgeEl) idBadgeEl.innerText = `Escrow Contract #${ag.id}`;
+
+    const statusBadgeEl = document.getElementById("modalShipmentStatusBadge");
+    if (statusBadgeEl) {
+      statusBadgeEl.className = `badge badge-status-${statusName.toLowerCase()} px-3 py-1`;
+      statusBadgeEl.innerText = statusName;
+    }
+
+    const iconEl = document.getElementById("modalShipmentIcon");
+    if (iconEl) {
+      if (statusIdx === 3) iconEl.innerText = "✅";
+      else if (statusIdx === 5) iconEl.innerText = "⚠️";
+      else if (statusIdx === 6 || statusIdx === 7) iconEl.innerText = "🛑";
+      else if (statusIdx === 2) iconEl.innerText = "🚚";
+      else iconEl.innerText = "📦";
+    }
+
+    // 2. Proof Gallery (Side-by-Side Comparison)
+    // Gather all valid proofs:
+    // - Proof 1: Origin creation cargo condition proof (Shipper)
+    // - Proof 2: Milestone 1 pickup condition proof (Carrier)
+    // - Proof 3: Milestone 2 delivery condition signoff proof (Carrier)
+    const proofs = [];
+
+    // Stage 1: Origin initial cargo proof
+    if (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "" && ag.initialPhotoIpfs !== "N/A") {
+      proofs.push({
+        stage: 1,
+        title: "Stage 1: Origin Cargo Manifest",
+        stageBadge: "Stage 1 • Shipper Creation",
+        statusText: "Baseline Condition",
+        statusBadgeClass: "bg-primary bg-opacity-25 border border-primary text-primary",
+        cid: ag.initialPhotoIpfs,
+        description: "Initial physical condition & packing manifest recorded by shipper before dispatch.",
+        icon: "📦"
+      });
+    }
+
+    // Stage 2: Carrier pickup verification proof (Milestone 1)
+    if (ag.ms1 && ag.ms1.completed && ag.ms1.ipfsProofHash && ag.ms1.ipfsProofHash !== "" && ag.ms1.ipfsProofHash !== "N/A" && ag.ms1.ipfsProofHash !== "null") {
+      proofs.push({
+        stage: 2,
+        title: "Stage 2: Carrier Pickup Verification",
+        stageBadge: "Stage 2 • Milestone 1 (30%)",
+        statusText: ag.ms1.approved ? "Approved & Disbursed" : "Submitted for Review",
+        statusBadgeClass: ag.ms1.approved ? "bg-success bg-opacity-25 border border-success text-success" : "bg-warning bg-opacity-25 border border-warning text-warning",
+        cid: ag.ms1.ipfsProofHash,
+        description: "Inspection photo taken at origin loading dock by carrier driver prior to departure.",
+        icon: "🚚"
+      });
+    }
+
+    // Stage 3: Final recipient delivery signoff proof (Milestone 2)
+    if (ag.ms2 && ag.ms2.completed && ag.ms2.ipfsProofHash && ag.ms2.ipfsProofHash !== "" && ag.ms2.ipfsProofHash !== "N/A" && ag.ms2.ipfsProofHash !== "null") {
+      proofs.push({
+        stage: 3,
+        title: "Stage 3: Recipient Delivery Sign-off",
+        stageBadge: "Stage 3 • Milestone 2 (70%)",
+        statusText: ag.ms2.approved ? "Final Settlement" : "Submitted for Sign-off",
+        statusBadgeClass: ag.ms2.approved ? "bg-success bg-opacity-25 border border-success text-success" : "bg-warning bg-opacity-25 border border-warning text-warning",
+        cid: ag.ms2.ipfsProofHash,
+        description: "Destination unloading photo & recipient delivery receipt confirmation.",
+        icon: "🏁"
+      });
+    }
+
+    const proofGalleryEl = document.getElementById("modalProofGallery");
+    const proofCountInfoEl = document.getElementById("modalProofCountInfo");
+
+    if (proofGalleryEl) {
+      if (proofs.length === 0) {
+        if (proofCountInfoEl) proofCountInfoEl.innerText = "No photographic proofs recorded on-chain yet";
+        proofGalleryEl.innerHTML = `
+          <div class="col-12">
+            <div class="p-4 text-center rounded bg-black bg-opacity-30 border border-secondary border-opacity-30">
+              <span class="fs-1 d-block mb-2">📷</span>
+              <div class="text-white small fw-bold">No Inspection Photos Uploaded</div>
+              <div class="text-muted extra-small">No IPFS multihash proofs have been recorded for this agreement.</div>
+            </div>
+          </div>
+        `;
+      } else {
+        let colClass = "col-12 col-md-4";
+        if (proofs.length === 1) {
+          colClass = "col-12 col-md-8 col-lg-6 mx-auto";
+          if (proofCountInfoEl) proofCountInfoEl.innerText = "1 Image Proof (Origin Cargo Baseline)";
+        } else if (proofs.length === 2) {
+          colClass = "col-12 col-md-6";
+          if (proofCountInfoEl) proofCountInfoEl.innerText = "2 Image Proofs (Side-by-Side: Origin vs. Pickup Inspection)";
+        } else {
+          colClass = "col-12 col-md-4";
+          if (proofCountInfoEl) proofCountInfoEl.innerText = "3 Image Proofs (Full Lifecycle: Origin ➔ Pickup ➔ Delivery)";
+        }
+
+        let galleryHtml = "";
+        proofs.forEach(p => {
+          const safeTitle = (p.title || "").replace(/'/g, "\\'");
+          galleryHtml += `
+            <div class="${colClass}">
+              <div class="proof-card h-100">
+                <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
+                  <div>
+                    <span class="proof-stage-badge mb-1 d-inline-block">${p.stageBadge}</span>
+                    <div class="fw-bold text-white small d-flex align-items-center gap-1">
+                      <span>${p.icon}</span> ${p.title}
+                    </div>
+                  </div>
+                  <span class="badge ${p.statusBadgeClass} extra-small">${p.statusText}</span>
+                </div>
+
+                <div class="proof-img-box mb-2" onclick="App.showIpfsModal('${p.cid}', '${safeTitle}')" title="Click to zoom proof" style="cursor: zoom-in;">
+                  <img src="/ipfs/${p.cid}" 
+                       onerror="this.onerror=null; this.src='https://gateway.pinata.cloud/ipfs/${p.cid}'; this.onerror=function(){this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100%25\\' height=\\'100%25\\' viewBox=\\'0 0 300 200\\'><rect fill=\\'%231e293b\\' width=\\'300\\' height=\\'200\\'/><text fill=\\'%2394a3b8\\' font-family=\\'sans-serif\\' font-size=\\'13\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'>📷 IPFS Cargo Proof (${p.cid.substring(0,10)}...)</text></svg>';};" 
+                       alt="${p.title}" 
+                       class="img-fluid w-100 h-100" 
+                       style="object-fit: cover; object-position: center; transition: transform 0.3s ease;">
+                  <div class="position-absolute bottom-0 end-0 m-2 px-2 py-1 bg-black bg-opacity-75 rounded extra-small text-info border border-secondary border-opacity-30">
+                    🔍 Zoom
+                  </div>
+                </div>
+
+                <div class="extra-small text-muted mb-2 flex-grow-1">${p.description}</div>
+
+                <div class="mt-auto pt-2 border-top border-secondary border-opacity-30 d-flex justify-content-between align-items-center gap-1">
+                  <code class="text-info extra-small text-truncate" style="max-width: 140px;" title="${p.cid}">${p.cid}</code>
+                  <div class="btn-group btn-group-sm">
+                    <button class="btn btn-outline-secondary btn-sm extra-small py-0 px-2" onclick="event.stopPropagation(); navigator.clipboard.writeText('${p.cid}'); alert('IPFS Multihash CID copied!');" title="Copy CID">📋</button>
+                    <a href="https://gateway.pinata.cloud/ipfs/${p.cid}" target="_blank" class="btn btn-outline-info btn-sm extra-small py-0 px-2" onclick="event.stopPropagation();" title="View on IPFS Gateway">🌐 Gateway</a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        proofGalleryEl.innerHTML = galleryHtml;
+      }
+    }
+
+    // 3. Middle Section: Physical Transit Route & Manifest
+    const originEl = document.getElementById("modalOriginLocation");
+    if (originEl) originEl.innerText = ag.origin || "Origin Depot";
+
+    const destEl = document.getElementById("modalDestLocation");
+    if (destEl) destEl.innerText = ag.dest || "Destination Depot";
+
+    const declaredValueEl = document.getElementById("modalDeclaredValue");
+    if (declaredValueEl) declaredValueEl.innerText = `RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}`;
+    
+    const deadlineSec = parseInt(ag.deadline);
+    const deadlineDate = new Date(deadlineSec * 1000);
+    const nowSec = Math.floor(Date.now() / 1000);
+    const diffSec = deadlineSec - nowSec;
+    let deadlineStr = deadlineDate.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    if (statusIdx < 3) {
+      if (diffSec > 0) {
+        const hours = Math.floor(diffSec / 3600);
+        const mins = Math.floor((diffSec % 3600) / 60);
+        deadlineStr += ` (${hours}h ${mins}m left)`;
+      } else {
+        deadlineStr += " (⚠️ Expired)";
+      }
+    }
+    const deadlineEl = document.getElementById("modalDeadline");
+    if (deadlineEl) deadlineEl.innerText = deadlineStr;
+
+    // Financials
+    const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
+    const totalMyr = (totalEth * this.ethToMyrRate).toFixed(2);
+    const totalEscrowEl = document.getElementById("modalTotalEscrow");
+    if (totalEscrowEl) totalEscrowEl.innerText = `${totalEth} ETH (RM ${parseFloat(totalMyr).toLocaleString()})`;
+
+    const remEth = parseFloat(this.web3.utils.fromWei(ag.remainingBalance, "ether")).toFixed(4);
+    const remMyr = (remEth * this.ethToMyrRate).toFixed(2);
+    const remainingEscrowEl = document.getElementById("modalRemainingEscrow");
+    if (remainingEscrowEl) remainingEscrowEl.innerText = `${remEth} ETH (RM ${parseFloat(remMyr).toLocaleString()})`;
+
+    // Participants
+    const shipperAddrEl = document.getElementById("modalShipperAddr");
+    if (shipperAddrEl) shipperAddrEl.innerText = ag.shipper;
+
+    const carrierAddrEl = document.getElementById("modalCarrierAddr");
+    if (carrierAddrEl) carrierAddrEl.innerText = ag.carrier;
+
+    // Milestones
+    const ms1Badge = document.getElementById("modalMs1Badge");
+    const ms1Sub = document.getElementById("modalMs1Sub");
+    if (ms1Badge && ms1Sub) {
+      if (ag.ms1 && ag.ms1.approved) {
+        ms1Badge.className = "badge bg-success";
+        ms1Badge.innerText = "✓ Released (30%)";
+        ms1Sub.innerText = "Pickup approved by Shipper & 30% ETH payout disbursed.";
+      } else if (ag.ms1 && ag.ms1.completed) {
+        ms1Badge.className = "badge bg-warning text-dark";
+        ms1Badge.innerText = "Pending Shipper Approval";
+        ms1Sub.innerText = "Carrier submitted pickup photo. Awaiting Shipper confirmation.";
+      } else {
+        ms1Badge.className = "badge bg-secondary";
+        ms1Badge.innerText = "Pending Pickup";
+        ms1Sub.innerText = "Awaiting Carrier arrival at origin loading dock.";
+      }
+    }
+
+    const ms2Badge = document.getElementById("modalMs2Badge");
+    const ms2Sub = document.getElementById("modalMs2Sub");
+    if (ms2Badge && ms2Sub) {
+      if (ag.ms2 && ag.ms2.approved) {
+        ms2Badge.className = "badge bg-success";
+        ms2Badge.innerText = "✓ Released (70%)";
+        ms2Sub.innerText = "Final delivery confirmed by Shipper & 70% ETH payout disbursed.";
+      } else if (ag.ms2 && ag.ms2.completed) {
+        ms2Badge.className = "badge bg-warning text-dark";
+        ms2Badge.innerText = "Pending Shipper Sign-off";
+        ms2Sub.innerText = "Carrier submitted delivery sign-off. Awaiting Shipper final settlement.";
+      } else {
+        ms2Badge.className = "badge bg-secondary";
+        ms2Badge.innerText = "Pending Delivery";
+        ms2Sub.innerText = "Cargo en route to destination facility.";
+      }
+    }
+
+    // 4. Bottom Functional Action Buttons
+    let actionsHtml = "";
+    const isShipper = this.account && ag.shipper && ag.shipper.toLowerCase() === this.account.toLowerCase();
+    const isCarrier = this.account && ag.carrier && ag.carrier.toLowerCase() === this.account.toLowerCase();
+
+    if (isShipper) {
+      if (statusIdx === 0) {
+        actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.cancelAgreement(${ag.id})">❌ Cancel Agreement (100% Refund)</button>`;
+      }
+      if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
+        actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.cancelAgreement(${ag.id})">❌ Cancel Before Pickup (100% Refund)</button>`;
+      }
+      if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
+        actionsHtml += `<button class="btn btn-sm btn-primary px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 0)">✅ Approve Pickup (Release 30%)</button>`;
+      }
+      if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
+        actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 1)">✅ Approve Delivery (Release 70%)</button>`;
+        actionsHtml += `<button class="btn btn-sm btn-warning px-3" onclick="App.raiseDispute(${ag.id})">⚠️ Raise Cargo Dispute</button>`;
+      }
+    } else if (isCarrier) {
+      if (statusIdx === 0) {
+        actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.rejectCarrierShipment(${ag.id})">❌ Reject Freight Contract</button>`;
+        actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.acceptCarrierShipment(${ag.id})">✅ Accept Freight Contract</button>`;
+      }
+      if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
+        actionsHtml += `<button class="btn btn-sm btn-primary px-3 fw-bold" onclick="App.submitMilestone(${ag.id}, 0)">📷 Submit Pickup Proof (Milestone 1)</button>`;
+      }
+      if (statusIdx === 2 && (!ag.ms2 || !ag.ms2.completed)) {
+        actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.submitMilestone(${ag.id}, 1)">🏁 Submit Delivery Proof (Milestone 2)</button>`;
+      }
+    }
+
+    actionsHtml += `
+      <button class="btn btn-sm btn-outline-info px-3" onclick="App.inspectAgreement(${ag.id})">📋 Escrow Audit</button>
+      <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">Close</button>
+    `;
+
+    const actionContainer = document.getElementById("modalActionButtonsContainer");
+    if (actionContainer) actionContainer.innerHTML = actionsHtml;
+
+    // 5. Open Modal
+    try {
+      if (typeof bootstrap !== "undefined" && bootstrap.Modal) {
+        const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+      } else {
+        modalEl.classList.add("show");
+        modalEl.style.display = "block";
+      }
+    } catch (e) {
+      console.error("Error opening shipment detail modal:", e);
     }
   },
 
   inspectAgreement: function (id) {
     const ag = this.allAgreements.find(a => a.id == id);
     if (!ag) return alert(`Viewing ledger verification for record #${id}`);
-    alert(`Agreement #${ag.id}\nShipper: ${ag.shipper}\nCarrier: ${ag.carrier}\nRemaining Escrow: ${this.web3.utils.fromWei(ag.remainingBalance, 'ether')} ETH`);
+    const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
+    const remainingEth = parseFloat(this.web3.utils.fromWei(ag.remainingBalance, "ether")).toFixed(4);
+    const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
+    const statusName = statusNames[parseInt(ag.status)] || "Unknown";
+
+    alert(
+      `📋 On-Chain Escrow Audit #${ag.id}\n` +
+      `----------------------------------------\n` +
+      `Cargo: ${ag.cargoTitle}\n` +
+      `Route: ${ag.origin} ➔ ${ag.dest}\n` +
+      `Declared Value: RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}\n` +
+      `Shipper: ${ag.shipper}\n` +
+      `Carrier: ${ag.carrier}\n` +
+      `Locked Escrow: ${totalEth} ETH\n` +
+      `Remaining Balance: ${remainingEth} ETH\n` +
+      `IPFS CID: ${ag.initialPhotoIpfs}\n` +
+      `Contract State: ${statusName}`
+    );
   },
 
   // On-Chain Actions
   submitMilestone: async function (id, msIndex) {
     const proof = prompt("Enter IPFS Proof CID or Inspection Photo Hash:", "QmDemoBillOfLading" + Date.now());
     if (proof === null) return;
+    this.hideShipmentDetailModal();
     try {
       await this.escrowContract.methods.submitMilestoneProof(id, msIndex, proof || "N/A").send({ from: this.account });
       alert("Milestone " + (msIndex + 1) + " proof successfully recorded on blockchain!");
@@ -1295,6 +1861,7 @@ const App = {
   approveMilestone: async function (id, msIndex) {
     const promptMsg = msIndex === 0 ? "Approve Pickup & release 30% ETH payout to Carrier?" : "Approve Final Delivery & release remaining 70% ETH payout to Carrier?";
     if (!confirm(promptMsg)) return;
+    this.hideShipmentDetailModal();
     try {
       await this.escrowContract.methods.approveMilestonePayout(id, msIndex).send({ from: this.account });
       alert("Milestone payout approved & funds disbursed to Carrier wallet!");
@@ -1306,8 +1873,13 @@ const App = {
 
   cancelAgreement: async function (id) {
     if (!confirm("Cancel Agreement #" + id + " for a 100% escrow refund?")) return;
+    this.hideShipmentDetailModal();
     try {
-      await this.escrowContract.methods.cancelBeforePickup(id).send({ from: this.account });
+      if (this.escrowContract.methods.cancelAgreement) {
+        await this.escrowContract.methods.cancelAgreement(id).send({ from: this.account });
+      } else {
+        await this.escrowContract.methods.cancelBeforePickup(id).send({ from: this.account });
+      }
       alert("Agreement cancelled and 100% escrow refunded to your wallet!");
       await this.refreshUI();
     } catch (err) {
@@ -1318,6 +1890,7 @@ const App = {
   raiseDispute: async function (id) {
     const reason = prompt("Enter dispute reason (e.g. Physical cargo damage, missing boxes):", "Cargo arrived damaged during transport");
     if (!reason) return;
+    this.hideShipmentDetailModal();
     try {
       await this.escrowContract.methods.raiseDispute(id, reason).send({ from: this.account });
       alert("Dispute registered. Escrow frozen for Arbiter review.");

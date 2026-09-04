@@ -5,7 +5,7 @@ import "./CarrierReputationToken.sol";
 
 contract LogisticsEscrow {
     enum Role { None, Shipper, Carrier }
-    enum AgreementStatus { Created, InTransit, Delivering, Completed, Refunded, Disputed, Cancelled }
+    enum AgreementStatus { PendingAcceptance, InTransit, Delivering, Completed, Refunded, Disputed, Cancelled, Rejected }
 
     struct User {
         string name;
@@ -23,6 +23,14 @@ contract LogisticsEscrow {
         string ipfsProofHash;
     }
 
+    struct CargoSpec {
+        string cargoTitle;
+        string originLocation;
+        string destLocation;
+        string initialPhotoIpfs;
+        uint256 declaredValue;
+    }
+
     struct Agreement {
         uint256 id;
         address payable shipper;
@@ -31,6 +39,7 @@ contract LogisticsEscrow {
         uint256 remainingEscrowBalance;
         uint256 deliveryDeadline;
         AgreementStatus status;
+        CargoSpec cargo;
         Milestone[2] milestones;
     }
 
@@ -47,6 +56,8 @@ contract LogisticsEscrow {
     event StakeDeposited(address indexed carrier, uint256 amount);
     event StakeWithdrawn(address indexed carrier, uint256 amount);
     event AgreementCreated(uint256 indexed agreementId, address indexed shipper, address indexed carrier, uint256 totalValue, uint256 deadline);
+    event AgreementAccepted(uint256 indexed agreementId, address indexed carrier);
+    event AgreementRejected(uint256 indexed agreementId, address indexed carrier, uint256 refundAmount);
     event AgreementCancelled(uint256 indexed agreementId, address indexed shipper, uint256 refundAmount);
     event MilestoneSubmitted(uint256 indexed agreementId, uint8 milestoneIndex, string ipfsProof);
     event FundsReleased(uint256 indexed agreementId, uint8 milestoneIndex, uint256 amount, address indexed carrier);
@@ -132,7 +143,11 @@ contract LogisticsEscrow {
         emit StakeWithdrawn(msg.sender, _amount);
     }
 
-    function createAgreement(address payable _carrier, uint256 _deadline) external payable returns (uint256) {
+    function createAgreement(
+        address payable _carrier,
+        uint256 _deadline,
+        CargoSpec calldata _cargo
+    ) external payable returns (uint256) {
         require(users[msg.sender].role == Role.Shipper, "Only registered shippers can create agreements");
         require(users[_carrier].role == Role.Carrier, "Target carrier is not registered");
         require(msg.value > 0, "Funding amount must be greater than zero");
@@ -147,7 +162,8 @@ contract LogisticsEscrow {
         newAgreement.totalValue = msg.value;
         newAgreement.remainingEscrowBalance = msg.value;
         newAgreement.deliveryDeadline = _deadline;
-        newAgreement.status = AgreementStatus.InTransit;
+        newAgreement.status = AgreementStatus.PendingAcceptance;
+        newAgreement.cargo = _cargo;
 
         newAgreement.milestones[0] = Milestone({
             description: "Milestone 1: Cargo Pickup Verification",
@@ -169,10 +185,32 @@ contract LogisticsEscrow {
         return agreementId;
     }
 
-    function cancelBeforePickup(uint256 _id) external onlyShipper(_id) {
+    function acceptAgreement(uint256 _id) external onlyCarrier(_id) {
         Agreement storage ag = agreements[_id];
-        require(ag.status == AgreementStatus.InTransit, "Cannot cancel in current state");
-        require(!ag.milestones[0].completed, "Cargo already picked up by carrier");
+        require(ag.status == AgreementStatus.PendingAcceptance, "Agreement not pending acceptance");
+        require(block.timestamp <= ag.deliveryDeadline, "Delivery deadline has passed");
+        ag.status = AgreementStatus.InTransit;
+        emit AgreementAccepted(_id, ag.carrier);
+    }
+
+    function rejectAgreement(uint256 _id) external onlyCarrier(_id) {
+        Agreement storage ag = agreements[_id];
+        require(ag.status == AgreementStatus.PendingAcceptance, "Agreement not pending acceptance");
+        ag.status = AgreementStatus.Rejected;
+        uint256 refundAmount = ag.remainingEscrowBalance;
+        ag.remainingEscrowBalance = 0;
+        (bool sent, ) = ag.shipper.call{value: refundAmount}("");
+        require(sent, "Refund transfer failed");
+        emit AgreementRejected(_id, ag.carrier, refundAmount);
+    }
+
+    function cancelAgreement(uint256 _id) public onlyShipper(_id) {
+        Agreement storage ag = agreements[_id];
+        require(
+            ag.status == AgreementStatus.PendingAcceptance ||
+            (ag.status == AgreementStatus.InTransit && !ag.milestones[0].completed),
+            "Cannot cancel in current state"
+        );
 
         uint256 refundAmount = ag.remainingEscrowBalance;
         ag.remainingEscrowBalance = 0;
@@ -181,6 +219,10 @@ contract LogisticsEscrow {
         (bool sent, ) = ag.shipper.call{value: refundAmount}("");
         require(sent, "Refund transfer failed");
         emit AgreementCancelled(_id, ag.shipper, refundAmount);
+    }
+
+    function cancelBeforePickup(uint256 _id) external onlyShipper(_id) {
+        cancelAgreement(_id);
     }
 
     function submitMilestoneProof(uint256 _id, uint8 _msIndex, string calldata _ipfsProof) external onlyCarrier(_id) withinDeadline(_id) {
@@ -302,6 +344,17 @@ contract LogisticsEscrow {
     ) {
         Agreement storage ag = agreements[_id];
         return (ag.id, ag.shipper, ag.carrier, ag.totalValue, ag.remainingEscrowBalance, ag.deliveryDeadline, ag.status);
+    }
+
+    function getAgreementCargo(uint256 _id) external view returns (
+        string memory cargoTitle,
+        string memory originLocation,
+        string memory destLocation,
+        string memory initialPhotoIpfs,
+        uint256 declaredValue
+    ) {
+        CargoSpec storage c = agreements[_id].cargo;
+        return (c.cargoTitle, c.originLocation, c.destLocation, c.initialPhotoIpfs, c.declaredValue);
     }
 
     function getMilestoneDetails(uint256 _id, uint8 _msIndex) external view returns (

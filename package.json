@@ -1,4 +1,4 @@
-﻿{
+{
   "name": "logistics-dapp",
   "version": "1.0.0",
   "description": "Decentralized Escrow and Milestone-Based Logistics Platform",
@@ -8,6 +8,8 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.18.2"
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "multer": "^2.3.0"
   }
 }
