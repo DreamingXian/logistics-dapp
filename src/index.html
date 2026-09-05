@@ -384,10 +384,6 @@
                 Completed
                 <span id="shipperBadgeCompleted" class="badge rounded-pill filter-count-badge d-none">0</span>
               </button>
-              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Disputed', this)">
-                Disputed
-                <span id="shipperBadgeDisputed" class="badge rounded-pill filter-count-badge d-none">0</span>
-              </button>
               <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Cancelled', this)">
                 Cancelled
                 <span id="shipperBadgeCancelled" class="badge rounded-pill filter-count-badge d-none">0</span>
@@ -452,9 +448,9 @@
         </div>
         <div class="col-md-3 col-6">
           <div class="stat-box">
-            <span class="extra-small text-muted text-uppercase">Disputed / Damaged</span>
-            <h2 class="fw-bold text-danger my-1" id="statCarrierDisputed">0</h2>
-            <span class="extra-small text-muted">Contested Cargo Claims</span>
+            <span class="extra-small text-muted text-uppercase">Cancelled / Refunded</span>
+            <h2 class="fw-bold text-danger my-1" id="statCarrierCancelled">0</h2>
+            <span class="extra-small text-muted">Missed or Cancelled</span>
           </div>
         </div>
         <div class="col-md-3 col-6">
@@ -527,7 +523,7 @@
               </div>
             </div>
             <div class="extra-small text-muted">
-              Note: If a shipment misses its delivery deadline or dispute is faulted, <b>150 CRT tokens</b> are slashed from your reputation (cannot drop below 0 CRT).
+              Note: If a shipment misses its delivery deadline, <b>150 CRT tokens</b> are slashed from your reputation (cannot drop below 0 CRT).
             </div>
           </div>
         </div>
@@ -592,33 +588,7 @@
       </div>
     </div>
 
-    <!-- ================= VIEW 5: ARBITER MEDIATION PORTAL ================= -->
-    <div id="view-arbiter" class="d-none">
-      <div class="glass-card p-4 mb-4">
-        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
-          <div>
-            <span class="badge bg-warning text-dark px-3 py-1 mb-2">Neutral Commercial Arbiter Authority</span>
-            <h4 class="fw-bold text-white mb-0">⚖️ Cargo Damage & Dispute Resolution Center</h4>
-          </div>
-          <div class="text-end">
-            <span class="text-muted small">Designated Authority:</span>
-            <div class="text-warning small font-monospace" id="arbiterContractAddress">0x000...000</div>
-          </div>
-        </div>
-        <p class="text-muted small">
-          Review contested physical cargo damage reports, inspect IPFS photographic proof, and enact legally binding settlement splits.
-        </p>
-      </div>
-
-      <div class="glass-card p-4">
-        <h5 class="fw-bold text-white mb-3">Pending Cargo Disputes Queue</h5>
-        <div id="arbiterDisputesList">
-          <div class="text-center text-muted py-5">Scanning for contested shipments...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ================= VIEW 6: PUBLIC AUDIT LEDGER ================= -->
+    <!-- ================= VIEW 5: PUBLIC AUDIT LEDGER ================= -->
     <div id="view-ledger" class="d-none">
       <div class="glass-card p-4">
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -630,12 +600,12 @@
             <select id="ledgerStatusFilter" class="form-select form-select-sm form-control-dark" onchange="App.filterLedger()">
               <option value="ALL">All Statuses</option>
               <option value="PendingAcceptance">Pending Acceptance</option>
-              <option value="InTransit">In Transit (Pickup Pending)</option>
-              <option value="Delivering">Delivering (Transit Active)</option>
+              <option value="PickupRequired">Pickup Required (Overdue Pickup)</option>
+              <option value="InTransit">In Transit / Delivery Active</option>
               <option value="Completed">Completed & Settled</option>
-              <option value="Disputed">Disputed / In Arbitration</option>
-              <option value="Refunded">Refunded (Timeout / Mediation)</option>
-              <option value="Rejected">Rejected</option>
+              <option value="Refunded">Refunded (Timeout / Missed Pickup)</option>
+              <option value="Cancelled">Cancelled by Shipper</option>
+              <option value="Declined">Declined by Carrier</option>
             </select>
             <button class="btn btn-sm btn-outline-light" onclick="App.loadAgreements()">🔄 Refresh</button>
           </div>
@@ -649,14 +619,15 @@
                 <th>Shipper</th>
                 <th>Carrier</th>
                 <th>Total Escrow (ETH / MYR)</th>
-                <th>Milestone Status</th>
+                <th>Milestones Progress</th>
+                <th>Milestone Timeline</th>
                 <th>Deadline</th>
                 <th>Agreement State</th>
-                <th>On-Chain Action</th>
+                <th class="text-end">Action</th>
               </tr>
             </thead>
             <tbody id="agreementTableBody">
-              <tr><td colspan="8" class="text-center text-muted py-5">Loading blockchain ledger...</td></tr>
+              <tr><td colspan="9" class="text-center text-muted py-5">Loading blockchain ledger...</td></tr>
             </tbody>
           </table>
         </div>

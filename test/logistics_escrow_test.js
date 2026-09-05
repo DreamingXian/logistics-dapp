@@ -99,37 +99,7 @@ contract("LogisticsEscrow End-to-End Suite", (accounts) => {
     assert.equal(ag.remainingBalance.toString(), "0");
   });
 
-  it("4. Should allow Shipper to raise dispute and Arbiter to resolve dispute split", async () => {
-    await escrow.registerUser("Acme Corp", 1, { from: shipper });
-    await escrow.registerUser("FastTrans Ltd", 2, { from: carrier, value: web3.utils.toWei("0.1", "ether") });
 
-    const deadline = Math.floor(Date.now() / 1000) + 3600;
-    const totalVal = web3.utils.toWei("1.0", "ether");
-
-    await escrow.createAgreement(
-      carrier,
-      deadline,
-      ["Chemical Drums", "Kuantan Port", "Pasir Gudang", "QmDrumsPhoto", 30000],
-      { from: shipper, value: totalVal }
-    );
-
-    await escrow.acceptAgreement(1, { from: carrier });
-    await escrow.submitMilestoneProof(1, 0, "QmPickupHash123", { from: carrier });
-    await escrow.approveMilestonePayout(1, 0, { from: shipper });
-
-    // Carrier delivers damaged goods, Shipper disputes
-    await escrow.submitMilestoneProof(1, 1, "QmDeliveryDamaged", { from: carrier });
-    await escrow.raiseDispute(1, "Cargo arrived broken", { from: shipper });
-
-    let ag = await escrow.getAgreementDetails(1);
-    assert.equal(ag.status.toString(), "5"); // Disputed
-
-    // Arbiter mediates: 60% refund to shipper, 40% payout to carrier, slash stake
-    await escrow.resolveDispute(1, 60, 40, true, web3.utils.toWei("0.05", "ether"), { from: deployer });
-
-    ag = await escrow.getAgreementDetails(1);
-    assert.equal(ag.status.toString(), "4"); // Refunded
-  });
 
   it("5. Should reject unauthorized operations", async () => {
     await escrow.registerUser("Acme Corp", 1, { from: shipper });

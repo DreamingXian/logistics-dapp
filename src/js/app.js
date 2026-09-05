@@ -3,8 +3,7 @@ const App = {
   account: null,
   escrowContract: null,
   tokenContract: null,
-  activeRole: null, // 1 = Shipper, 2 = Carrier, 'arbiter' = Arbiter
-  isArbiter: false,
+  activeRole: null, // 1 = Shipper, 2 = Carrier, 'admin' = Platform Administrator
   ethToMyrRate: 13500, // 1 ETH ≈ RM 13,500
   allAgreements: [],
   shipperFilter: "ALL",
@@ -365,10 +364,7 @@ const App = {
     // Query on-chain user & authority state
     const user = await this.escrowContract.methods.users(this.account).call();
     const owner = await this.escrowContract.methods.owner().call();
-    const arbiter = await this.escrowContract.methods.arbiter().call();
-
-    this.isArbiter = (this.account.toLowerCase() === arbiter.toLowerCase() || this.account.toLowerCase() === owner.toLowerCase());
-    document.getElementById("arbiterContractAddress").innerText = arbiter;
+    this.isAdmin = (this.account.toLowerCase() === owner.toLowerCase());
 
     const roleBadge = document.getElementById("roleBadge");
     const repBadge = document.getElementById("reputationBadge");
@@ -377,8 +373,8 @@ const App = {
     const navPillsContainer = document.getElementById("mainNavPills");
     navPillsContainer.innerHTML = "";
 
-    // CASE 1: UNREGISTERED ACCOUNT (and not Arbiter)
-    if (!user.isRegistered && !this.isArbiter) {
+    // CASE 1: UNREGISTERED ACCOUNT (and not Admin)
+    if (!user.isRegistered && !this.isAdmin) {
       roleBadge.className = "badge bg-secondary px-3 py-2";
       roleBadge.innerText = "Unregistered Account";
       repBadge.classList.add("d-none");
@@ -393,28 +389,22 @@ const App = {
       return;
     }
 
-    // CASE 2: ARBITER (ADMIN)
-    if (this.isArbiter && !user.isRegistered) {
-      this.activeRole = "arbiter";
+    // CASE 2: PLATFORM ADMINISTRATOR (Deployer / Auditor)
+    if (this.isAdmin && !user.isRegistered) {
+      this.activeRole = "admin";
       roleBadge.className = "badge bg-warning text-dark px-3 py-2 fw-bold";
-      roleBadge.innerText = "👑 Platform Arbiter (Admin)";
+      roleBadge.innerText = "👑 Platform Administrator (Auditor)";
       repBadge.classList.add("d-none");
 
-      const targetTab = (this.currentTab === "ledger") ? "ledger" : "arbiter";
       navPillsContainer.innerHTML = `
         <li class="nav-item">
-          <button class="nav-link ${targetTab === 'arbiter' ? 'active' : ''}" id="tab-btn-arbiter" onclick="App.switchTab('arbiter')">
-            ⚖️ Arbiter Mediation Queue
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-            📜 Public Audit Ledger
+          <button class="nav-link active" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
+            📜 Public Distributed Audit Ledger
           </button>
         </li>
       `;
 
-      this.switchTab(targetTab);
+      this.switchTab("ledger");
       await this.loadAgreements();
       return;
     }
@@ -549,7 +539,7 @@ const App = {
 
   switchTab: function (tabName) {
     this.currentTab = tabName;
-    const views = ["disconnected", "register", "shipper", "carrier-profile", "carrier-tasks", "arbiter", "ledger"];
+    const views = ["disconnected", "register", "shipper", "carrier-profile", "carrier-tasks", "ledger"];
     views.forEach(v => {
       const el = document.getElementById(`view-${v}`);
       if (el) el.classList.add("d-none");
@@ -2258,7 +2248,6 @@ const App = {
       this.renderShipperView();
       this.renderCarrierProfileView();
       this.renderCarrierTasksView();
-      this.renderArbiterView();
       this.renderLedgerTable(this.allAgreements);
     } catch (err) {
       console.error("Error loading agreements:", err);
@@ -2274,7 +2263,6 @@ const App = {
     const pickupCount = myAgreements.filter(ag => parseInt(ag.status) === 1 && (!ag.ms1 || !ag.ms1.approved)).length;
     const transitCount = myAgreements.filter(ag => parseInt(ag.status) === 2 || (parseInt(ag.status) === 4 && ag.ms1 && ag.ms1.completed && (!ag.ms2 || !ag.ms2.approved))).length;
     const completedCount = myAgreements.filter(ag => parseInt(ag.status) === 3).length;
-    const disputedCount = myAgreements.filter(ag => parseInt(ag.status) === 5).length;
     const cancelledCount = myAgreements.filter(ag => parseInt(ag.status) === 6 || (parseInt(ag.status) === 4 && (!ag.ms1 || !ag.ms1.completed))).length;
     const refundedCount = myAgreements.filter(ag => {
       const sIdx = parseInt(ag.status);
@@ -2294,7 +2282,6 @@ const App = {
     setBadge("shipperBadgePickup", pickupCount);
     setBadge("shipperBadgeTransit", transitCount);
     setBadge("shipperBadgeCompleted", completedCount);
-    setBadge("shipperBadgeDisputed", disputedCount);
     setBadge("shipperBadgeCancelled", cancelledCount);
     setBadge("shipperBadgeRefunded", refundedCount);
   },
@@ -2323,7 +2310,6 @@ const App = {
         if (this.shipperFilter === "Completed") return isCompleted;
         if (this.shipperFilter === "Cancelled") return isCancelled;
         if (this.shipperFilter === "Refunded") return hasRefund;
-        if (this.shipperFilter === "Disputed") return sIdx === 5;
         return (statusNames[sIdx] || "PendingAcceptance") === this.shipperFilter;
       });
     }
@@ -2413,7 +2399,6 @@ const App = {
             if (ag.ms2SubmittedOnTime) {
               // Fair: submitted on or before deadline, so shipper approves normally!
               actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-              actionButtons += `<button class="btn btn-sm btn-warning me-2" onclick="event.stopPropagation(); App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
             } else {
               // Carrier submitted late delivery proof
               if (hasRemainingEscrow) {
@@ -2421,7 +2406,6 @@ const App = {
               } else {
                 actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
-              actionButtons += `<button class="btn btn-sm btn-warning me-2" onclick="event.stopPropagation(); App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemainingEscrow && statusIdx !== 4 && statusIdx !== 3) {
@@ -2432,7 +2416,6 @@ const App = {
             } else {
               actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-2 py-1 me-2 fw-bold">⚠️ Delivery Overdue — Carrier In Transit</span>`;
             }
-            actionButtons += `<button class="btn btn-sm btn-outline-warning me-2" onclick="event.stopPropagation(); App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
           }
         }
       } else {
@@ -2447,7 +2430,6 @@ const App = {
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
           actionButtons += `<button class="btn btn-sm btn-success me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-          actionButtons += `<button class="btn btn-sm btn-warning me-2" onclick="event.stopPropagation(); App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
         }
       }
 
@@ -2471,12 +2453,21 @@ const App = {
         }
       } else if (statusIdx === 7) { // Rejected
         footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">❌ Carrier Declined Agreement (${eth100Str})</span>`;
-      } else if (statusIdx === 5) { // Disputed
-        footerStatusHtml = `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⚠️ Cargo Disputed (Arbiter Investigation)</span>`;
       } else if (statusIdx === 0) { // PendingAcceptance
         footerStatusHtml = `<span class="text-warning extra-small">⏳ Awaiting Carrier Acceptance</span>`;
       } else {
         footerStatusHtml = `<span class="text-muted extra-small">🚚 Transit in progress</span>`;
+      }
+
+      let ms1TimeInfo = "";
+      if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
+        const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+      }
+      let ms2TimeInfo = "";
+      if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
+        const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
       }
 
       const photoBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
@@ -2496,8 +2487,8 @@ const App = {
             <div class="col-md-6 text-md-end">Declared Value: <b class="text-white">RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}</b></div>
             <div class="col-md-6">Carrier Fleet: <code>${ag.carrier.substring(0, 6)}...${ag.carrier.substring(38)}</code></div>
             <div class="col-md-6 text-md-end">Escrow Deposit: <b class="text-white fs-6">${totalEth} ETH</b> <span class="text-info">(RM ${parseFloat(myrVal).toLocaleString()})</span></div>
-            <div class="col-md-6">Milestone 1 (Pickup 30%): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms1.completed ? '<span class="text-warning fw-bold">Verification Submitted</span>' : '<span class="text-muted">Pending</span>')}</div>
-            <div class="col-md-6 text-md-end">Milestone 2 (Delivery 70%): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms2.completed ? '<span class="text-warning fw-bold">Sign-off Submitted</span>' : '<span class="text-muted">Pending</span>')}</div>
+            <div class="col-md-6">Milestone 1 (Pickup 30%): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms1.completed ? '<span class="text-warning fw-bold">Verification Submitted</span>' : '<span class="text-muted">Pending</span>')}${ms1TimeInfo}</div>
+            <div class="col-md-6 text-md-end">Milestone 2 (Delivery 70%): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Released</span>' : (ag.ms2.completed ? '<span class="text-warning fw-bold">Sign-off Submitted</span>' : '<span class="text-muted">Pending</span>')}${ms2TimeInfo}</div>
             <div class="col-12 text-muted d-flex align-items-center gap-2 flex-wrap">Delivery Deadline: ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</div>
           </div>
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
@@ -2546,11 +2537,12 @@ const App = {
     const myTasks = (this.allAgreements || []).filter(ag => ag.carrier && ag.carrier.toLowerCase() === this.account.toLowerCase());
     const completed = myTasks.filter(ag => parseInt(ag.status) === 3).length;
     const active = myTasks.filter(ag => parseInt(ag.status) === 1 || parseInt(ag.status) === 2 || (parseInt(ag.status) === 4 && ag.ms1 && ag.ms1.completed)).length;
-    const disputed = myTasks.filter(ag => parseInt(ag.status) === 5).length;
+    const cancelled = myTasks.filter(ag => parseInt(ag.status) === 6 || (parseInt(ag.status) === 4 && (!ag.ms1 || !ag.ms1.completed))).length;
 
     document.getElementById("statCarrierCompleted").innerText = completed;
     document.getElementById("statCarrierActive").innerText = active;
-    document.getElementById("statCarrierDisputed").innerText = disputed;
+    const statCancelledEl = document.getElementById("statCarrierCancelled");
+    if (statCancelledEl) statCancelledEl.innerText = cancelled;
 
     let totalEarnedWei = BigInt(0);
     myTasks.forEach(ag => {
@@ -2720,10 +2712,19 @@ const App = {
         if (!actionButtons) {
           actionButtons += `<span class="badge bg-secondary bg-opacity-25 border border-secondary text-light px-3 py-1 fw-bold">↩️ Escrow Refunded</span>`;
         }
-      } else if (statusIdx === 5) {
-        actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⚠️ Cargo Disputed (Arbiter Investigation)</span>`;
       } else if (statusIdx === 6) {
         actionButtons += `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Cancelled by Shipper</span>`;
+      }
+
+      let ms1TimeInfo = "";
+      if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
+        const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+      }
+      let ms2TimeInfo = "";
+      if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
+        const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
       }
 
       const photoBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
@@ -2744,8 +2745,8 @@ const App = {
           <div class="row g-2 text-muted small mb-3">
             <div class="col-md-6">Route: <b>${originParsed.address}</b> ➔ <b>${destParsed.address}</b></div>
             <div class="col-md-6 text-md-end">Earnable Freight Payout: <b class="text-success fs-6">${totalEth} ETH</b> (RM ${parseFloat(myrVal).toLocaleString()})</div>
-            <div class="col-md-6">Milestone 1 (${eth30Str}): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>')}</div>
-            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : 'Pending Final Delivery')}</div>
+            <div class="col-md-6">Milestone 1 (${eth30Str}): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>')}${ms1TimeInfo}</div>
+            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : 'Pending Final Delivery')}${ms2TimeInfo}</div>
             <div class="col-12 text-muted d-flex align-items-center gap-2 flex-wrap">Delivery Deadline: ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</div>
           </div>
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
@@ -2759,53 +2760,13 @@ const App = {
     activeContainer.innerHTML = activeHtml;
   },
 
-  renderArbiterView: function () {
-    const container = document.getElementById("arbiterDisputesList");
-    if (!container) return;
-
-    const disputes = this.allAgreements.filter(ag => parseInt(ag.status) === 5);
-
-    if (disputes.length === 0) {
-      container.innerHTML = `<div class="text-center text-muted py-5">No contested cargo claims in arbitration queue. All clear! 🕊️</div>`;
-      return;
-    }
-
-    let html = "";
-    disputes.forEach(ag => {
-      const remainingEth = parseFloat(this.web3.utils.fromWei(ag.remainingBalance, "ether")).toFixed(3);
-      html += `
-        <div class="shipment-card border-warning">
-          <div class="d-flex justify-content-between align-items-center mb-3">
-            <h6 class="fw-bold text-warning mb-0">⚠️ Disputed Shipment #${ag.id}</h6>
-            <span class="badge bg-warning text-dark">Frozen Balance: ${remainingEth} ETH</span>
-          </div>
-          <div class="row g-2 text-muted small mb-3">
-            <div class="col-6">Shipper (Complainant): <code>${ag.shipper}</code></div>
-            <div class="col-6">Carrier (Respondent): <code>${ag.carrier}</code></div>
-          </div>
-          <div class="p-3 bg-dark rounded border border-secondary mb-3">
-            <div class="small text-white fw-semibold mb-1">Carrier Proof Hash:</div>
-            <code class="text-info">${ag.ms2.ipfsProofHash || "No proof attached"}</code>
-          </div>
-          <div class="d-flex justify-content-end">
-            <button class="btn btn-sm btn-warning fw-bold px-4" onclick="App.resolveDispute(${ag.id})">
-              ⚖️ Mediate & Split Escrow
-            </button>
-          </div>
-        </div>
-      `;
-    });
-
-    container.innerHTML = html;
-  },
-
   renderLedgerTable: function (agreementsList) {
     const tbody = document.getElementById("agreementTableBody");
     tbody.innerHTML = "";
 
     let list = [...agreementsList];
     if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">No blockchain escrow records found on-chain. Dispatched agreements will appear here permanently indexed.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted">No blockchain escrow records found on-chain. Dispatched agreements will appear here permanently indexed.</td></tr>`;
       return;
     }
 
@@ -2816,8 +2777,21 @@ const App = {
       const myrVal = (totalEth * this.ethToMyrRate).toFixed(2);
       const deadlineDate = new Date(parseInt(ag.deadline) * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 
-      const ipfsBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
-        `<button class="btn btn-sm btn-outline-primary extra-small px-2 py-0 ms-1" onclick="App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 IPFS</button>` : "";
+      let timelineHtml = `<div class="extra-small">`;
+      if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
+        const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        timelineHtml += `<div>📦 Pickup: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+      } else {
+        timelineHtml += `<div class="text-muted">📦 Pickup: <i>Pending</i></div>`;
+      }
+
+      if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
+        const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        timelineHtml += `<div class="mt-1">🏁 Delivery: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+      } else {
+        timelineHtml += `<div class="text-muted mt-1">🏁 Delivery: <i>Pending</i></div>`;
+      }
+      timelineHtml += `</div>`;
 
       tbody.innerHTML += `
         <tr>
@@ -2829,11 +2803,11 @@ const App = {
             <span class="badge ${ag.ms1 && ag.ms1.approved ? 'bg-success' : 'bg-secondary'} me-1">Pickup 30%</span>
             <span class="badge ${ag.ms2 && ag.ms2.approved ? 'bg-success' : 'bg-secondary'}">Delivery 70%</span>
           </td>
-          <td>${deadlineDate}</td>
+          <td>${timelineHtml}</td>
+          <td>${deadlineDate} ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</td>
           <td><span class="badge ${statusDisplay.badgeClass}">${statusDisplay.text}</span></td>
-          <td>
-            <button class="btn btn-sm btn-outline-info extra-small px-2 py-0" onclick="App.inspectAgreement(${ag.id})">🔍 Audit</button>
-            ${ipfsBtn}
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary extra-small px-3 py-1 fw-semibold" onclick="App.openShipmentDetailModal(${ag.id})">🔍 View Details</button>
           </td>
         </tr>
       `;
@@ -2842,12 +2816,35 @@ const App = {
 
   filterLedger: function () {
     const filter = document.getElementById("ledgerStatusFilter").value;
-    const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
 
     if (filter === "ALL") {
       this.renderLedgerTable(this.allAgreements);
     } else {
-      const filtered = this.allAgreements.filter(ag => (statusNames[parseInt(ag.status)] || "PendingAcceptance") === filter);
+      const filtered = this.allAgreements.filter(ag => {
+        const sDisplay = this.getStatusDisplay(ag);
+        if (filter === "PendingAcceptance") {
+          return sDisplay.name === "PendingAcceptance" || sDisplay.name === "Expired" || parseInt(ag.status) === 0;
+        }
+        if (filter === "PickupRequired") {
+          return sDisplay.name === "PickupRequired" || parseInt(ag.status) === 1;
+        }
+        if (filter === "InTransit") {
+          return sDisplay.name === "InTransit" || parseInt(ag.status) === 2;
+        }
+        if (filter === "Completed") {
+          return sDisplay.name === "Completed" || parseInt(ag.status) === 3;
+        }
+        if (filter === "Refunded") {
+          return sDisplay.name === "Refunded" || parseInt(ag.status) === 4 || ag.hasRefund;
+        }
+        if (filter === "Cancelled") {
+          return sDisplay.name === "Cancelled" || parseInt(ag.status) === 6;
+        }
+        if (filter === "Declined") {
+          return sDisplay.name === "Declined" || parseInt(ag.status) === 7;
+        }
+        return sDisplay.name === filter;
+      });
       this.renderLedgerTable(filtered);
     }
   },
@@ -3100,14 +3097,19 @@ const App = {
     const ms1Badge = document.getElementById("modalMs1Badge");
     const ms1Sub = document.getElementById("modalMs1Sub");
     if (ms1Badge && ms1Sub) {
+      let subTimeStr = "";
+      if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
+        const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        subTimeStr = ` [Submitted: ${t1} • ${ag.ms1SubmittedOnTime ? 'On-Time' : 'Overdue'}]`;
+      }
       if (ag.ms1 && ag.ms1.approved) {
         ms1Badge.className = "badge bg-success";
         ms1Badge.innerText = `✓ Released (${eth30Str})`;
-        ms1Sub.innerText = `Pickup approved by Shipper & ${eth30Str} ETH payout disbursed.`;
+        ms1Sub.innerText = `Pickup approved by Shipper & ${eth30Str} ETH payout disbursed.${subTimeStr}`;
       } else if (ag.ms1 && ag.ms1.completed) {
         ms1Badge.className = "badge bg-warning text-dark";
         ms1Badge.innerText = `Pending Shipper Approval (${eth30Str})`;
-        ms1Sub.innerText = "Carrier submitted pickup photo. Awaiting Shipper confirmation.";
+        ms1Sub.innerText = `Carrier submitted pickup photo.${subTimeStr} Awaiting Shipper confirmation.`;
       } else {
         ms1Badge.className = "badge bg-secondary";
         ms1Badge.innerText = `Pending Pickup (${eth30Str})`;
@@ -3118,14 +3120,19 @@ const App = {
     const ms2Badge = document.getElementById("modalMs2Badge");
     const ms2Sub = document.getElementById("modalMs2Sub");
     if (ms2Badge && ms2Sub) {
+      let subTimeStr2 = "";
+      if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
+        const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
+        subTimeStr2 = ` [Submitted: ${t2} • ${ag.ms2SubmittedOnTime ? 'On-Time' : 'Overdue'}]`;
+      }
       if (ag.ms2 && ag.ms2.approved) {
         ms2Badge.className = "badge bg-success";
         ms2Badge.innerText = `✓ Released (${eth70Str})`;
-        ms2Sub.innerText = `Final delivery confirmed by Shipper & ${eth70Str} ETH payout disbursed.`;
+        ms2Sub.innerText = `Final delivery confirmed by Shipper & ${eth70Str} ETH payout disbursed.${subTimeStr2}`;
       } else if (ag.ms2 && ag.ms2.completed) {
         ms2Badge.className = "badge bg-warning text-dark";
         ms2Badge.innerText = `Pending Shipper Sign-off (${eth70Str})`;
-        ms2Sub.innerText = "Carrier submitted delivery sign-off. Awaiting Shipper final settlement.";
+        ms2Sub.innerText = `Carrier submitted delivery sign-off.${subTimeStr2} Awaiting Shipper final settlement.`;
       } else {
         ms2Badge.className = "badge bg-secondary";
         ms2Badge.innerText = `Pending Delivery (${eth70Str})`;
@@ -3166,20 +3173,17 @@ const App = {
           if (ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
             if (ag.ms2SubmittedOnTime) {
               actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-              actionsHtml += `<button class="btn btn-sm btn-warning px-3" onclick="App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
             } else {
               if (hasRemaining) {
                 actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">💰 Claim 70% Refund (${eth70Str}) & Validate Late Delivery Done</button>`;
               } else {
                 actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
-              actionsHtml += `<button class="btn btn-sm btn-warning px-3" onclick="App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemaining && statusIdx !== 4 && statusIdx !== 3) {
               actionsHtml += `<button class="btn btn-sm btn-danger px-3 fw-bold shadow-sm" onclick="App.claimTimeoutRefund(${ag.id}, this)">⏰ Claim 70% Overdue Escrow Refund (${eth70Str})</button>`;
             }
-            actionsHtml += `<button class="btn btn-sm btn-outline-warning px-3" onclick="App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
           }
         }
       } else {
@@ -3194,7 +3198,6 @@ const App = {
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
           actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-          actionsHtml += `<button class="btn btn-sm btn-warning px-3" onclick="App.raiseDispute(${ag.id})">⚠️ Dispute Damaged / Missing Cargo</button>`;
         }
       }
     } else if (isCarrier) {
@@ -3234,7 +3237,6 @@ const App = {
     }
 
     actionsHtml += `
-      <button class="btn btn-sm btn-outline-info px-3" onclick="App.inspectAgreement(${ag.id})">📋 Escrow Audit</button>
       <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">Close</button>
     `;
 
@@ -3259,29 +3261,6 @@ const App = {
     } catch (e) {
       console.error("Error opening shipment detail modal:", e);
     }
-  },
-
-  inspectAgreement: function (id) {
-    const ag = this.allAgreements.find(a => a.id == id);
-    if (!ag) return alert(`Viewing ledger verification for record #${id}`);
-    const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
-    const remainingEth = parseFloat(this.web3.utils.fromWei(ag.remainingBalance, "ether")).toFixed(4);
-    const statusNames = ["PendingAcceptance", "InTransit", "Delivering", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
-    const statusName = statusNames[parseInt(ag.status)] || "Unknown";
-
-    alert(
-      `📋 On-Chain Escrow Audit #${ag.id}\n` +
-      `----------------------------------------\n` +
-      `Cargo: ${ag.cargoTitle}\n` +
-      `Route: ${ag.origin} ➔ ${ag.dest}\n` +
-      `Declared Value: RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}\n` +
-      `Shipper: ${ag.shipper}\n` +
-      `Carrier: ${ag.carrier}\n` +
-      `Locked Escrow: ${totalEth} ETH\n` +
-      `Remaining Balance: ${remainingEth} ETH\n` +
-      `IPFS CID: ${ag.initialPhotoIpfs}\n` +
-      `Contract State: ${statusName}`
-    );
   },
 
   // On-Chain Actions
@@ -3448,32 +3427,6 @@ const App = {
         this.showToast("Cancellation Cancelled", "Cancellation transaction was cancelled in MetaMask.", "cancel");
       } else {
         this.showToast("Cancellation Failed", err.message || String(err), "error");
-      }
-    } finally {
-      this.hideTxLoading(btn);
-    }
-  },
-
-  raiseDispute: async function (id, btn) {
-    const ag = this.allAgreements.find(a => String(a.id) === String(id));
-    if (ag && parseInt(ag.status) === 6) {
-      this.showToast("Action Disallowed", "Cannot dispute a cancelled agreement.", "error");
-      return;
-    }
-    const reason = prompt("Enter dispute reason (e.g. Physical cargo damage, missing boxes):", "Cargo arrived damaged during transport");
-    if (!reason) return;
-    try {
-      this.showTxLoading("Filing Cargo Dispute", "Registering cargo dispute on EVM blockchain...", "Freezes remaining escrow for Arbiter investigation", btn);
-      await this.escrowContract.methods.raiseDispute(id, reason).send({ from: this.account });
-      this.showToast("Dispute Filed", "Dispute registered! Escrow frozen for Arbiter review.", "info");
-      this.hideShipmentDetailModal();
-      await this.refreshUI();
-    } catch (err) {
-      console.error(err);
-      if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
-        this.showToast("Dispute Cancelled", "Dispute filing cancelled in MetaMask.", "cancel");
-      } else {
-        this.showToast("Dispute Failed", err.message || String(err), "error");
       }
     } finally {
       this.hideTxLoading(btn);

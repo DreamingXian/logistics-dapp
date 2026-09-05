@@ -65,8 +65,6 @@ contract LogisticsEscrow {
     event MilestoneSubmitted(uint256 indexed agreementId, uint8 milestoneIndex, string ipfsProof);
     event FundsReleased(uint256 indexed agreementId, uint8 milestoneIndex, uint256 amount, address indexed carrier);
     event RefundIssued(uint256 indexed agreementId, address indexed shipper, uint256 amount);
-    event DisputeRaised(uint256 indexed agreementId, address indexed raisedBy, string reason);
-    event DisputeResolved(uint256 indexed agreementId, uint256 shipperRefund, uint256 carrierPayout, uint256 slashedStake);
     event ReputationAwarded(address indexed carrier, uint256 amount, bool isMint);
 
     modifier onlyOwner() {
@@ -413,53 +411,7 @@ contract LogisticsEscrow {
         emit RefundIssued(_id, ag.shipper, refundAmount);
     }
 
-    function raiseDispute(uint256 _id, string calldata _reason) external onlyShipper(_id) {
-        Agreement storage ag = agreements[_id];
-        require(ag.status == AgreementStatus.InTransit || ag.status == AgreementStatus.Delivering, "Cannot dispute in current status");
-        ag.status = AgreementStatus.Disputed;
-        emit DisputeRaised(_id, msg.sender, _reason);
-    }
 
-    function resolveDispute(
-        uint256 _id,
-        uint256 _shipperRefundPct,
-        uint256 _carrierPayoutPct,
-        bool _slashCarrierStake,
-        uint256 _stakeSlashAmount
-    ) external onlyArbiter {
-        Agreement storage ag = agreements[_id];
-        require(ag.status == AgreementStatus.Disputed, "Agreement is not in dispute");
-        require(_shipperRefundPct + _carrierPayoutPct == 100, "Percentages must total 100");
-
-        uint256 escrowBal = ag.remainingEscrowBalance;
-        ag.remainingEscrowBalance = 0;
-        ag.status = AgreementStatus.Refunded;
-
-        uint256 shipperRefund = (escrowBal * _shipperRefundPct) / 100;
-        uint256 carrierPayout = (escrowBal * _carrierPayoutPct) / 100;
-
-        uint256 actualStakeSlashed = 0;
-        if (_slashCarrierStake && _stakeSlashAmount > 0) {
-            User storage carrierUser = users[ag.carrier];
-            actualStakeSlashed = carrierUser.securityStake < _stakeSlashAmount ? carrierUser.securityStake : _stakeSlashAmount;
-            carrierUser.securityStake -= actualStakeSlashed;
-            shipperRefund += actualStakeSlashed;
-            reputationToken.slashReputation(ag.carrier, 150);
-            emit ReputationAwarded(ag.carrier, 150, false);
-        }
-
-        if (shipperRefund > 0) {
-            agreementRefunded[_id] = true;
-            (bool sentShipper, ) = ag.shipper.call{value: shipperRefund}("");
-            require(sentShipper, "Shipper dispute refund failed");
-        }
-        if (carrierPayout > 0) {
-            (bool sentCarrier, ) = ag.carrier.call{value: carrierPayout}("");
-            require(sentCarrier, "Carrier dispute payout failed");
-        }
-
-        emit DisputeResolved(_id, shipperRefund, carrierPayout, actualStakeSlashed);
-    }
 
     function getAgreementDetails(uint256 _id) external view returns (
         uint256 id,
