@@ -143,7 +143,7 @@
             </div>
           </div>
 
-          <button class="btn btn-success btn-lg w-100 py-3 fw-bold btn-glow" onclick="App.registerUser()">
+          <button class="btn btn-success btn-lg w-100 py-3 fw-bold btn-glow" id="btnRegisterUser" onclick="App.registerUser(this)">
             Confirm Registration & Enter Portal
           </button>
         </div>
@@ -175,6 +175,16 @@
               <span class="badge bg-secondary">24-Hour Carrier Acceptance Window</span>
             </div>
             
+            <!-- Dedicated Form Validation Error Banner -->
+            <div id="createFormErrorAlert" class="alert alert-danger d-none align-items-center gap-2 mb-3 py-2 px-3 border border-danger border-opacity-50" role="alert">
+              <span class="fs-4">⚠️</span>
+              <div class="flex-grow-1">
+                <div class="fw-bold small text-white" id="createFormErrorTitle">Validation Required</div>
+                <div class="extra-small text-light opacity-90" id="createFormErrorMessage">Please complete the required input field.</div>
+              </div>
+              <button type="button" class="btn-close btn-close-white btn-sm ms-auto" aria-label="Close" onclick="document.getElementById('createFormErrorAlert').classList.add('d-none'); document.getElementById('createFormErrorAlert').classList.remove('d-flex');"></button>
+            </div>
+
             <div class="row g-3">
               <!-- Cargo Information & Proof -->
               <div class="col-md-6">
@@ -332,7 +342,7 @@
               <!-- Submit & Cancel -->
               <div class="col-12 text-end mt-3">
                 <button class="btn btn-outline-secondary me-2 px-4" onclick="App.toggleCreateAgreementPanel()">Cancel</button>
-                <button class="btn btn-primary btn-glow px-5 fw-bold" onclick="App.createAgreement()">
+                <button id="btnCreateAgreement" class="btn btn-primary btn-glow px-5 fw-bold" onclick="App.createAgreement(this)">
                   🔒 Deposit Escrow & Dispatch Agreement Request
                 </button>
               </div>
@@ -362,22 +372,36 @@
                 Pending
                 <span id="shipperBadgePending" class="badge rounded-pill filter-count-badge d-none">0</span>
               </button>
-              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('InTransit', this)">
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('PickupRequired', this)">
                 Pickup Required
                 <span id="shipperBadgePickup" class="badge rounded-pill filter-count-badge d-none">0</span>
               </button>
-              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Delivering', this)">
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('InTransit', this)">
                 In Transit
                 <span id="shipperBadgeTransit" class="badge rounded-pill filter-count-badge d-none">0</span>
               </button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Completed', this)">Completed</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Disputed', this)">Disputed</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Cancelled', this)">Cancelled</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterShipperContracts('Refunded', this)">Refunded</button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Completed', this)">
+                Completed
+                <span id="shipperBadgeCompleted" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Disputed', this)">
+                Disputed
+                <span id="shipperBadgeDisputed" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Cancelled', this)">
+                Cancelled
+                <span id="shipperBadgeCancelled" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterShipperContracts('Refunded', this)">
+                Refunded
+                <span id="shipperBadgeRefunded" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
             </div>
             <select id="shipperSortSelect" class="form-select form-select-sm form-control-dark ms-md-1" style="width: auto;" onchange="App.sortShipperContracts()">
               <option value="newest">Sort: Newest First</option>
               <option value="oldest">Sort: Oldest First</option>
+              <option value="deadlineSoon">Sort: Nearest Deadline</option>
+              <option value="deadlineLate">Sort: Latest Deadline</option>
               <option value="valueHigh">Sort: Highest Escrow Value</option>
             </select>
           </div>
@@ -481,26 +505,29 @@
         <!-- Reputation Tier Progression -->
         <div class="col-lg-6">
           <div class="glass-card p-4 h-100">
-            <h5 class="fw-bold text-white mb-2">⭐ Carrier Reputation Progression</h5>
+            <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
+              <h5 class="fw-bold text-white mb-0">⭐ Carrier Reputation Progression</h5>
+              <span id="carrierProgressionTierBadge" class="badge bg-warning text-dark px-2 py-1 small fw-semibold">🥉 Bronze Tier (1.00x)</span>
+            </div>
             <p class="text-muted small mb-3">
               Earn CRT tokens for successful cargo pickup (+50 CRT) and delivery (+100 CRT). Higher tiers earn premium rate multipliers.
             </p>
             <div class="p-3 rounded bg-dark border border-secondary mb-3">
-              <div class="d-flex justify-content-between text-muted small mb-1">
-                <span>Next Milestone Progress:</span>
-                <span id="carrierTierProgressPercent" class="text-white fw-bold">15%</span>
+              <div class="d-flex justify-content-between text-muted small mb-1 align-items-center">
+                <span>Verified Balance & Progress:</span>
+                <span id="carrierTierProgressPercent" class="text-warning fw-bold fs-6">0 / 450 CRT (0% to Silver)</span>
               </div>
               <div class="progress mb-2" style="height: 10px;">
-                <div id="carrierTierProgressBar" class="progress-bar bg-warning" role="progressbar" style="width: 15%"></div>
+                <div id="carrierTierProgressBar" class="progress-bar bg-warning" role="progressbar" style="width: 0%"></div>
               </div>
               <div class="d-flex justify-content-between extra-small text-muted">
-                <span>🥉 Bronze (0 CRT, 1.0x)</span>
-                <span>🥈 Silver (300 CRT, 1.15x)</span>
-                <span>🥇 Gold (1,000+ CRT, 1.30x)</span>
+                <span>🥉 Bronze (&lt;450 CRT, 1.0x)</span>
+                <span>🥈 Silver (450 - 1,500 CRT, 1.15x)</span>
+                <span>🥇 Gold (&gt;1,500 CRT, 1.30x)</span>
               </div>
             </div>
             <div class="extra-small text-muted">
-              Note: If a shipment misses its deadline or is settled with damage fault, <b>300 CRT tokens</b> are slashed from your reputation score.
+              Note: If a shipment misses its delivery deadline or dispute is faulted, <b>150 CRT tokens</b> are slashed from your reputation (cannot drop below 0 CRT).
             </div>
           </div>
         </div>
@@ -513,7 +540,7 @@
       <div class="glass-card p-4 mb-4 border-warning border-opacity-50">
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h5 class="fw-bold text-warning mb-0">📬 Incoming Shipment Requests (Pending Acceptance)</h5>
-          <span class="badge bg-warning text-dark" id="pendingAcceptCountBadge">1 New Offer</span>
+          <span class="badge bg-warning text-dark" id="pendingAcceptCountBadge">0 New Offers</span>
         </div>
         <p class="text-muted small mb-3">
           Shippers have assigned these freight agreements to your fleet. Review cargo specs, pickup/delivery route, and freight payout.
@@ -536,13 +563,25 @@
           <div class="d-flex flex-wrap gap-2 align-items-center">
             <div class="btn-group btn-group-sm" role="group">
               <button type="button" class="btn filter-pill-btn active" onclick="App.filterCarrierTasks('ALL', this)">All</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('InTransit', this)">Pickup Required</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('Delivering', this)">In Transit</button>
-              <button type="button" class="btn filter-pill-btn" onclick="App.filterCarrierTasks('Completed', this)">Delivered</button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterCarrierTasks('PickupRequired', this)">
+                Pickup Required
+                <span id="carrierBadgePickup" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterCarrierTasks('InTransit', this)">
+                In Transit
+                <span id="carrierBadgeTransit" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
+              <button type="button" class="btn filter-pill-btn position-relative" onclick="App.filterCarrierTasks('Completed', this)">
+                Delivered
+                <span id="carrierBadgeCompleted" class="badge rounded-pill filter-count-badge d-none">0</span>
+              </button>
             </div>
             <select id="carrierSortSelect" class="form-select form-select-sm form-control-dark ms-md-2" style="width: auto;" onchange="App.sortCarrierTasks()">
               <option value="urgency">Sort: Nearest Deadline</option>
+              <option value="deadlineLate">Sort: Latest Deadline</option>
               <option value="valueHigh">Sort: Highest Fee</option>
+              <option value="newest">Sort: Newest First</option>
+              <option value="oldest">Sort: Oldest First</option>
             </select>
           </div>
         </div>
@@ -668,11 +707,19 @@
                   <div class="mb-3">
                     <span class="extra-small text-success fw-bold d-block mb-1">🟢 Origin / Pickup Location:</span>
                     <div class="text-white small fw-semibold" id="modalOriginLocation">-</div>
+                    <div class="mt-1 p-2 rounded bg-black bg-opacity-50 border border-success border-opacity-30 extra-small">
+                      <span class="text-success fw-bold d-block mb-1">🏢 Pickup Specifics / Manual Address Details:</span>
+                      <div class="text-light" id="modalOriginManualDetails">-</div>
+                    </div>
                   </div>
 
                   <div class="mb-3">
                     <span class="extra-small text-danger fw-bold d-block mb-1">🔴 Destination / Delivery Location:</span>
                     <div class="text-white small fw-semibold" id="modalDestLocation">-</div>
+                    <div class="mt-1 p-2 rounded bg-black bg-opacity-50 border border-danger border-opacity-30 extra-small">
+                      <span class="text-danger fw-bold d-block mb-1">🏢 Delivery Specifics / Manual Address Details:</span>
+                      <div class="text-light" id="modalDestManualDetails">-</div>
+                    </div>
                   </div>
 
                   <div class="d-flex justify-content-between pt-2 border-top border-secondary border-opacity-25 extra-small text-muted flex-wrap gap-2">
@@ -755,6 +802,91 @@
       </div>
     </div>
 
+    <!-- ================= MODAL: RESCHEDULE REFUNDED SHIPMENT ================= -->
+    <div class="modal fade" id="rescheduleShipmentModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border border-warning border-opacity-50 shadow-2xl" style="background: rgba(15, 23, 42, 0.98) !important; backdrop-filter: blur(20px); border-radius: 1.25rem;">
+          <div class="modal-header border-secondary border-opacity-50 px-4 py-3">
+            <div class="d-flex align-items-center gap-2">
+              <span class="fs-4">🔄</span>
+              <h5 class="modal-title fw-bold text-warning mb-0">Reschedule Cargo Dispatch?</h5>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <div class="alert alert-success py-2 px-3 extra-small mb-3">
+              ✅ <b>100% Escrow Refund Disbursed</b>: Funds have been refunded to your wallet, and the carrier reputation was penalized 150 CRT for missing the pickup deadline.
+            </div>
+            <p class="text-white small mb-2" id="rescheduleModalCargoTitle">
+              Cargo: <b>-</b>
+            </p>
+            <p class="text-muted small mb-0">
+              Would you like to immediately re-dispatch this cargo with another registered carrier? We will auto-fill your route, cargo manifest, and location details into the creation form so you don't have to enter them again.
+            </p>
+          </div>
+          <div class="modal-footer border-secondary border-opacity-50 px-4 py-3 d-flex justify-content-between">
+            <button type="button" class="btn btn-outline-secondary btn-sm px-3" data-bs-dismiss="modal">No, Done for Now</button>
+            <button type="button" class="btn btn-warning btn-glow btn-sm px-4 fw-bold" onclick="App.confirmReschedule()">
+              🔄 Reschedule Cargo Now
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= MODAL: CARRIER MILESTONE PROOF SUBMISSION (IPFS Upload) ================= -->
+    <div class="modal fade" id="carrierProofUploadModal" tabindex="-1" aria-labelledby="carrierProofModalTitle" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border border-primary border-opacity-50 shadow-2xl" style="background: rgba(15, 23, 42, 0.98) !important; backdrop-filter: blur(20px); border-radius: 1.25rem;">
+          <div class="modal-header border-secondary border-opacity-50 px-4 py-3">
+            <div class="d-flex align-items-center gap-2">
+              <span class="fs-4">📷</span>
+              <h5 class="modal-title fw-bold text-white mb-0" id="carrierProofModalTitle">Submit Milestone Photographic Proof</h5>
+            </div>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-4">
+            <input type="hidden" id="carrierProofAgreementId">
+            <input type="hidden" id="carrierProofMsIndex">
+
+            <div class="p-3 rounded bg-black bg-opacity-40 border border-secondary border-opacity-50 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-1 flex-wrap gap-1">
+                <span class="small text-white fw-bold" id="carrierProofTargetAgreement">Freight Contract #1</span>
+                <span class="badge bg-primary" id="carrierProofTargetMilestone">Milestone 1: Cargo Pickup</span>
+              </div>
+              <div class="extra-small text-muted" id="carrierProofDescription">
+                Capture and upload physical inspection photo at origin loading dock to trigger 30% escrow payout verification.
+              </div>
+            </div>
+
+            <!-- Upload Photo Proof -->
+            <div class="mb-3">
+              <label class="form-label text-white small fw-bold mb-1">Select Inspection Photo Proof</label>
+              <input type="file" id="carrierProofFileInput" class="form-control form-control-dark form-control-sm" accept="image/*" onchange="App.onCarrierProofFileSelected(event)">
+              <span class="extra-small text-muted d-block mt-1">Supports PNG, JPG, WebP. Automatically pinned directly to decentralized Pinata IPFS Cloud.</span>
+            </div>
+
+            <!-- Preview Box -->
+            <div id="carrierProofPreviewContainer" class="p-2 rounded bg-black bg-opacity-50 border border-secondary text-center mb-3 d-none" style="min-height: 160px;">
+              <img id="carrierProofPreviewImg" src="" alt="Proof Preview" class="img-fluid rounded" style="max-height: 200px; object-fit: contain;">
+              <div class="extra-small text-success mt-2 fw-semibold" id="carrierProofFileName">photo.jpg</div>
+            </div>
+
+            <div id="carrierProofUploadStatus" class="alert alert-info py-2 px-3 extra-small d-none mb-0">
+              <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+              <span id="carrierProofStatusText">Uploading photo to Pinata IPFS...</span>
+            </div>
+          </div>
+          <div class="modal-footer border-secondary border-opacity-50 px-4 py-3 d-flex justify-content-between">
+            <button type="button" class="btn btn-secondary btn-sm px-3" data-bs-dismiss="modal" onclick="App.hideCarrierProofModal()">Cancel</button>
+            <button type="button" id="btnSubmitCarrierProof" class="btn btn-primary btn-glow btn-sm px-4 fw-bold" onclick="App.submitCarrierMilestoneProof()">
+              🚀 Upload to IPFS & Submit On-Chain
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- ================= MODAL: IPFS PHOTO INSPECTION (Root Level) ================= -->
     <div class="modal fade" id="ipfsPhotoModal" tabindex="-1" aria-labelledby="ipfsModalTitle" aria-hidden="true">
       <div class="modal-dialog modal-dialog-centered">
@@ -785,8 +917,43 @@
         </div>
       </div>
     </div>
-
   </main>
+
+  <!-- ================= TOP TEMPORAL NOTIFICATION CONTAINER ================= -->
+  <div id="topNotificationContainer" class="top-notification-container"></div>
+
+  <!-- ================= FULL-SCREEN TRANSACTION LOADING OVERLAY ================= -->
+  <div id="txLoadingOverlay" class="tx-loading-overlay">
+    <div class="tx-loading-card text-center">
+      <div class="tx-spinner-ring mb-4">
+        <div class="tx-pulse-dot"></div>
+      </div>
+      <h5 id="txLoadingTitle" class="fw-bold text-white mb-2">Processing Blockchain Transaction</h5>
+      <p id="txLoadingMsg" class="text-muted small mb-2">Please confirm the request in your Web3 wallet (MetaMask)...</p>
+      <div class="extra-small text-info opacity-75" id="txLoadingSub">Awaiting cryptographic signature on Ganache local ledger</div>
+    </div>
+  </div>
+
+  <!-- ================= INDEPENDENT CUSTOM CONFIRMATION OVERLAY ================= -->
+  <div id="customConfirmOverlay" class="custom-confirm-overlay" style="display: none;">
+    <div class="custom-confirm-card text-center">
+      <div class="custom-confirm-icon-wrap mb-3">
+        <span id="customConfirmIcon" class="fs-1">⚠️</span>
+      </div>
+      <h4 id="customConfirmTitle" class="fw-bold text-white mb-2">Confirm Action</h4>
+      <p id="customConfirmMessage" class="text-light small mb-4" style="line-height: 1.6; white-space: pre-line;">
+        Are you sure you want to proceed with this blockchain transaction?
+      </p>
+      <div class="d-flex justify-content-center gap-3">
+        <button type="button" class="btn btn-outline-secondary px-4 fw-bold" id="customConfirmCancelBtn">
+          Cancel
+        </button>
+        <button type="button" class="btn btn-primary px-4 fw-bold shadow" id="customConfirmOkBtn">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- Bootstrap 5 JS Bundle -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

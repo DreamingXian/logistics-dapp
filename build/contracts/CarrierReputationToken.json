@@ -7802,12 +7802,12 @@
         }
       },
       "links": {},
-      "address": "0x36BA9d814Eb7A4bE072C6359e65739f02f740dD7",
-      "transactionHash": "0x504a35e80d87d89226d95bc7db9dc8e4b7e8c3b46cb524d819f1e0f4841e6ba5"
+      "address": "0xdD47eCf1354e3B08963a07a8D48801aF0f5CFb3B",
+      "transactionHash": "0x46de32c3f29a3c8f02d5a452272196bf50ccc30a280dc39fa61d3038db3e2947"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-09-04T12:01:26.457Z",
+  "updatedAt": "2026-09-05T19:31:36.408Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",

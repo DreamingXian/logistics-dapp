@@ -51,6 +51,9 @@ contract LogisticsEscrow {
     mapping(address => User) public users;
     mapping(uint256 => Agreement) public agreements;
     address[] public registeredCarriers;
+    mapping(uint256 => bool) public agreementRefunded;
+    mapping(uint256 => bool) public agreementLateCompleted;
+    mapping(uint256 => mapping(uint8 => uint256)) public milestoneSubmittedTimestamp;
 
     event UserRegistered(address indexed userAddress, string name, Role role, uint256 stake);
     event StakeDeposited(address indexed carrier, uint256 amount);
@@ -199,9 +202,11 @@ contract LogisticsEscrow {
         ag.status = AgreementStatus.Rejected;
         uint256 refundAmount = ag.remainingEscrowBalance;
         ag.remainingEscrowBalance = 0;
+        agreementRefunded[_id] = true;
         (bool sent, ) = ag.shipper.call{value: refundAmount}("");
         require(sent, "Refund transfer failed");
         emit AgreementRejected(_id, ag.carrier, refundAmount);
+        emit RefundIssued(_id, ag.shipper, refundAmount);
     }
 
     function cancelAgreement(uint256 _id) public onlyShipper(_id) {
@@ -212,23 +217,36 @@ contract LogisticsEscrow {
             "Cannot cancel in current state"
         );
 
+        // If carrier already accepted (InTransit), but delivery deadline expired and carrier missed pickup, slash 300 CRT penalty
+        if (ag.status == AgreementStatus.InTransit && block.timestamp > ag.deliveryDeadline) {
+            reputationToken.slashReputation(ag.carrier, 300);
+            emit ReputationAwarded(ag.carrier, 300, false);
+        }
+
         uint256 refundAmount = ag.remainingEscrowBalance;
         ag.remainingEscrowBalance = 0;
         ag.status = AgreementStatus.Cancelled;
+        agreementRefunded[_id] = true;
 
         (bool sent, ) = ag.shipper.call{value: refundAmount}("");
         require(sent, "Refund transfer failed");
         emit AgreementCancelled(_id, ag.shipper, refundAmount);
+        emit RefundIssued(_id, ag.shipper, refundAmount);
     }
 
     function cancelBeforePickup(uint256 _id) external onlyShipper(_id) {
         cancelAgreement(_id);
     }
 
-    function submitMilestoneProof(uint256 _id, uint8 _msIndex, string calldata _ipfsProof) external onlyCarrier(_id) withinDeadline(_id) {
+    function submitMilestoneProof(uint256 _id, uint8 _msIndex, string calldata _ipfsProof) external onlyCarrier(_id) {
         require(_msIndex < 2, "Invalid milestone index");
         Agreement storage ag = agreements[_id];
-        require(ag.status == AgreementStatus.InTransit || ag.status == AgreementStatus.Delivering, "Agreement not active");
+        require(
+            ag.status == AgreementStatus.InTransit ||
+            ag.status == AgreementStatus.Delivering ||
+            (ag.status == AgreementStatus.Refunded && ag.milestones[0].completed),
+            "Agreement not active"
+        );
         require(!ag.milestones[_msIndex].completed, "Milestone already completed");
 
         if (_msIndex == 1) {
@@ -237,6 +255,7 @@ contract LogisticsEscrow {
 
         ag.milestones[_msIndex].completed = true;
         ag.milestones[_msIndex].ipfsProofHash = _ipfsProof;
+        milestoneSubmittedTimestamp[_id][_msIndex] = block.timestamp;
         emit MilestoneSubmitted(_id, _msIndex, _ipfsProof);
     }
 
@@ -245,6 +264,15 @@ contract LogisticsEscrow {
         Agreement storage ag = agreements[_id];
         require(ag.milestones[_msIndex].completed, "Milestone proof not submitted yet");
         require(!ag.milestones[_msIndex].approved, "Milestone payout already approved");
+
+        if (_msIndex == 1) {
+            uint256 subTime = milestoneSubmittedTimestamp[_id][1];
+            if (subTime == 0) subTime = block.timestamp;
+            require(
+                subTime <= ag.deliveryDeadline,
+                "Delivery deadline was missed by carrier. Please claim refund and validate late delivery."
+            );
+        }
 
         ag.milestones[_msIndex].approved = true;
         uint256 payoutAmount = (ag.totalValue * ag.milestones[_msIndex].payoutPercent) / 100;
@@ -267,8 +295,98 @@ contract LogisticsEscrow {
         emit FundsReleased(_id, _msIndex, payoutAmount, ag.carrier);
     }
 
+    function validateLateDelivery(uint256 _id) external onlyShipper(_id) {
+        Agreement storage ag = agreements[_id];
+        require(ag.milestones[0].completed, "Milestone 1 pickup was not completed");
+        require(ag.milestones[1].completed, "Milestone 2 delivery proof not submitted yet");
+        require(!ag.milestones[1].approved, "Milestone 2 already validated");
+
+        ag.milestones[1].approved = true;
+        ag.status = AgreementStatus.Completed;
+        users[ag.carrier].completedJobs++;
+
+        agreementLateCompleted[_id] = true;
+        agreementRefunded[_id] = true;
+
+        // If remaining escrow has not been refunded yet, refund it to the shipper now
+        if (ag.remainingEscrowBalance > 0) {
+            uint256 refundAmount = ag.remainingEscrowBalance;
+            ag.remainingEscrowBalance = 0;
+            reputationToken.slashReputation(ag.carrier, 300);
+            emit ReputationAwarded(ag.carrier, 300, false);
+            (bool sent, ) = ag.shipper.call{value: refundAmount}("");
+            require(sent, "Refund transfer to shipper failed");
+            emit RefundIssued(_id, ag.shipper, refundAmount);
+        }
+
+        // Carrier gets back +100 CRT for completing late delivery
+        reputationToken.mintReputation(ag.carrier, 100);
+        emit ReputationAwarded(ag.carrier, 100, true);
+
+        emit FundsReleased(_id, 1, 0, ag.carrier);
+    }
+
+    function validatePickupAndClaimTimeoutRefund(uint256 _id) external onlyShipper(_id) pastDeadline(_id) {
+        Agreement storage ag = agreements[_id];
+        require(ag.milestones[0].completed, "Pickup proof not submitted yet");
+        require(!ag.milestones[0].approved, "Pickup already approved");
+        require(ag.remainingEscrowBalance > 0, "No escrow balance remaining");
+
+        ag.milestones[0].approved = true;
+
+        uint256 pickupSubTime = milestoneSubmittedTimestamp[_id][0];
+        // If carrier submitted pickup proof on or before deadline, they earn the 30% payout and +50 CRT
+        if (pickupSubTime > 0 && pickupSubTime <= ag.deliveryDeadline) {
+            uint256 pickupPayout = (ag.totalValue * 30) / 100;
+            require(ag.remainingEscrowBalance >= pickupPayout, "Insufficient escrow for pickup");
+            ag.remainingEscrowBalance -= pickupPayout;
+
+            reputationToken.mintReputation(ag.carrier, 50);
+            emit ReputationAwarded(ag.carrier, 50, true);
+
+            (bool sentCarrier, ) = ag.carrier.call{value: pickupPayout}("");
+            require(sentCarrier, "Carrier pickup payout failed");
+            emit FundsReleased(_id, 0, pickupPayout, ag.carrier);
+
+            // Refund remaining 70% to shipper
+            uint256 refundAmount = ag.remainingEscrowBalance;
+            ag.remainingEscrowBalance = 0;
+            ag.status = AgreementStatus.Refunded;
+            agreementRefunded[_id] = true;
+
+            // Penalty of 300 CRT for missing delivery deadline
+            reputationToken.slashReputation(ag.carrier, 300);
+            emit ReputationAwarded(ag.carrier, 300, false);
+
+            (bool sentShipper, ) = ag.shipper.call{value: refundAmount}("");
+            require(sentShipper, "Shipper refund failed");
+            emit RefundIssued(_id, ag.shipper, refundAmount);
+        } else {
+            // Carrier submitted pickup proof LATE (after deadline expired).
+            // Carrier receives 0 ETH payout (100% refunded to shipper).
+            // Slashes 300 CRT for missing deadline, but mints +50 CRT reward for completing pickup!
+            uint256 refundAmount = ag.remainingEscrowBalance;
+            ag.remainingEscrowBalance = 0;
+            ag.status = AgreementStatus.Refunded;
+            agreementRefunded[_id] = true;
+
+            reputationToken.slashReputation(ag.carrier, 300);
+            emit ReputationAwarded(ag.carrier, 300, false);
+
+            reputationToken.mintReputation(ag.carrier, 50);
+            emit ReputationAwarded(ag.carrier, 50, true);
+
+            emit FundsReleased(_id, 0, 0, ag.carrier);
+
+            (bool sentShipper, ) = ag.shipper.call{value: refundAmount}("");
+            require(sentShipper, "Shipper refund failed");
+            emit RefundIssued(_id, ag.shipper, refundAmount);
+        }
+    }
+
     function claimTimeoutRefund(uint256 _id) external onlyShipper(_id) pastDeadline(_id) {
         Agreement storage ag = agreements[_id];
+        require(ag.status != AgreementStatus.PendingAcceptance, "Agreement not accepted yet; use cancelAgreement to refund without penalty");
         require(ag.status != AgreementStatus.Completed, "Agreement already completed");
         require(ag.status != AgreementStatus.Refunded, "Refund already processed");
         require(ag.status != AgreementStatus.Cancelled, "Agreement was cancelled");
@@ -276,10 +394,19 @@ contract LogisticsEscrow {
 
         uint256 refundAmount = ag.remainingEscrowBalance;
         ag.remainingEscrowBalance = 0;
-        ag.status = AgreementStatus.Refunded;
 
-        reputationToken.slashReputation(ag.carrier, 150);
-        emit ReputationAwarded(ag.carrier, 150, false);
+        // If carrier never picked up cargo, transition to Cancelled; if cargo was picked up, transition to Refunded (overdue in transit)
+        if (!ag.milestones[0].completed) {
+            ag.status = AgreementStatus.Cancelled;
+            emit AgreementCancelled(_id, ag.shipper, refundAmount);
+        } else {
+            ag.status = AgreementStatus.Refunded;
+        }
+
+        agreementRefunded[_id] = true;
+
+        reputationToken.slashReputation(ag.carrier, 300);
+        emit ReputationAwarded(ag.carrier, 300, false);
 
         (bool sent, ) = ag.shipper.call{value: refundAmount}("");
         require(sent, "Refund transfer to shipper failed");
@@ -322,6 +449,7 @@ contract LogisticsEscrow {
         }
 
         if (shipperRefund > 0) {
+            agreementRefunded[_id] = true;
             (bool sentShipper, ) = ag.shipper.call{value: shipperRefund}("");
             require(sentShipper, "Shipper dispute refund failed");
         }
@@ -344,6 +472,14 @@ contract LogisticsEscrow {
     ) {
         Agreement storage ag = agreements[_id];
         return (ag.id, ag.shipper, ag.carrier, ag.totalValue, ag.remainingEscrowBalance, ag.deliveryDeadline, ag.status);
+    }
+
+    function getAgreementStatusFlags(uint256 _id) external view returns (bool hasRefund, bool isLate) {
+        return (agreementRefunded[_id], agreementLateCompleted[_id]);
+    }
+
+    function getMilestoneSubmissionTime(uint256 _id, uint8 _msIndex) external view returns (uint256) {
+        return milestoneSubmittedTimestamp[_id][_msIndex];
     }
 
     function getAgreementCargo(uint256 _id) external view returns (
