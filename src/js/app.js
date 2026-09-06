@@ -1678,6 +1678,9 @@ const App = {
     try {
       this.showTxLoading("Accepting Freight Contract", `Confirming acceptance of Freight Contract #${id} in MetaMask...`, "Locks freight contract to your fleet", btn);
       await this.escrowContract.methods.acceptAgreement(id).send({ from: this.account });
+      try {
+        localStorage.setItem(`carrier_accepted_${id}`, "true");
+      } catch (storageErr) {}
       this.showToast("Task Accepted", `Accepted Freight Contract #${id}! Agreement is now [Pickup Required].`, "success");
       this.hideShipmentDetailModal();
       await this.refreshUI();
@@ -2168,8 +2171,13 @@ const App = {
 
       let acceptedAgreementIds = new Set();
       try {
+        let fromBlock = 0;
+        try {
+          const latestBlock = await this.web3.eth.getBlockNumber();
+          fromBlock = Math.max(0, Number(latestBlock) - 9999);
+        } catch (bErr) {}
         const acceptedEvents = await this.escrowContract.getPastEvents("AgreementAccepted", {
-          fromBlock: 0,
+          fromBlock: fromBlock,
           toBlock: "latest"
         });
         if (acceptedEvents && acceptedEvents.length > 0) {
@@ -2218,7 +2226,14 @@ const App = {
           isLate = true;
         }
 
-        const wasAccepted = acceptedAgreementIds.has(String(i)) || parseInt(ag.status) === 1 || parseInt(ag.status) === 2 || parseInt(ag.status) === 3;
+        const wasAccepted = acceptedAgreementIds.has(String(i)) || 
+                            parseInt(ag.status) === 1 || 
+                            parseInt(ag.status) === 2 || 
+                            parseInt(ag.status) === 3 || 
+                            parseInt(ag.status) === 4 ||
+                            Boolean(ms1 && (ms1.completed || ms1.approved)) ||
+                            Boolean(ms2 && (ms2.completed || ms2.approved)) ||
+                            (localStorage.getItem(`carrier_accepted_${i}`) === "true");
 
         this.allAgreements.push({
           id: ag.id,
@@ -2627,7 +2642,11 @@ const App = {
 
     // 2. Active & Historical Task Queue (only tasks carrier accepted, excluding PendingAcceptance and Rejected)
     const statusNames = ["PendingAcceptance", "PickupRequired", "InTransit", "Completed", "Refunded", "Disputed", "Cancelled", "Rejected"];
-    let activeTasks = myTasks.filter(ag => ag.wasAccepted && parseInt(ag.status) !== 0 && parseInt(ag.status) !== 7);
+    let activeTasks = myTasks.filter(ag => 
+      (ag.wasAccepted || (parseInt(ag.status) === 4 && ag.ms1 && ag.ms1.completed)) && 
+      parseInt(ag.status) !== 0 && 
+      parseInt(ag.status) !== 7
+    );
 
     if (this.carrierFilter !== "ALL") {
       activeTasks = activeTasks.filter(ag => {
@@ -2744,9 +2763,9 @@ const App = {
           </div>
           <div class="row g-2 text-muted small mb-3">
             <div class="col-md-6">Route: <b>${originParsed.address}</b> ➔ <b>${destParsed.address}</b></div>
-            <div class="col-md-6 text-md-end">Earnable Freight Payout: <b class="text-success fs-6">${totalEth} ETH</b> (RM ${parseFloat(myrVal).toLocaleString()})</div>
+            <div class="col-md-6 text-md-end">Earnable Freight Payout: ${statusIdx === 4 ? '<b class="text-warning fs-6">0.0000 ETH</b> <span class="badge bg-warning bg-opacity-25 text-warning extra-small">Overdue Escrow Refunded</span>' : `<b class="text-success fs-6">${totalEth} ETH</b> <span class="text-info">(RM ${parseFloat(myrVal).toLocaleString()})</span>`}</div>
             <div class="col-md-6">Milestone 1 (${eth30Str}): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>')}${ms1TimeInfo}</div>
-            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : 'Pending Final Delivery')}${ms2TimeInfo}</div>
+            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : (statusIdx === 4 ? '<span class="text-warning fw-bold">Late Delivery Required (+100 CRT)</span>' : 'Pending Final Delivery'))}${ms2TimeInfo}</div>
             <div class="col-12 text-muted d-flex align-items-center gap-2 flex-wrap">Delivery Deadline: ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</div>
           </div>
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
