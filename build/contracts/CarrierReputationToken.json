@@ -7804,10 +7804,61 @@
       "links": {},
       "address": "0xd2DABaD79E5825142bA81D4cad258f7EdAC06E40",
       "transactionHash": "0x41fa88d59904a6aab1f4f62f33577b1a2b065dfa0ef7d21e0fcd4eac0a04c59e"
+    },
+    "11155111": {
+      "events": {
+        "0xb4314795ba509f4f6e4f54698ebcf794fed2c1ba8199f5d0024b3f792eb606d1": {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "previousEscrow",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "newEscrow",
+              "type": "address"
+            }
+          ],
+          "name": "EscrowContractUpdated",
+          "type": "event"
+        },
+        "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef": {
+          "anonymous": false,
+          "inputs": [
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "from",
+              "type": "address"
+            },
+            {
+              "indexed": true,
+              "internalType": "address",
+              "name": "to",
+              "type": "address"
+            },
+            {
+              "indexed": false,
+              "internalType": "uint256",
+              "name": "value",
+              "type": "uint256"
+            }
+          ],
+          "name": "Transfer",
+          "type": "event"
+        }
+      },
+      "links": {},
+      "address": "0x47119120ef04173aAc1A71cD0ABA12b075376604",
+      "transactionHash": "0x46a0f15edcdf04bc606ec217fe23e322aa9cefc33cd332d0d329b95299aa4fb7"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-09-05T22:35:33.161Z",
+  "updatedAt": "2026-09-06T04:35:37.441Z",
   "networkType": "ethereum",
   "devdoc": {
     "kind": "dev",
