@@ -49,11 +49,11 @@ const App = {
       <div class="d-flex align-items-center gap-3">
         <span class="fs-4">${icon}</span>
         <div>
-          <div class="fw-bold text-white small mb-0">${title}</div>
-          <div class="text-light extra-small opacity-90">${message}</div>
+          <div class="fw-bold top-toast-title small mb-0">${title}</div>
+          <div class="top-toast-msg extra-small">${message}</div>
         </div>
       </div>
-      <button type="button" class="btn-close btn-close-white btn-sm ms-2" aria-label="Close"></button>
+      <button type="button" class="btn-close btn-sm ms-2" aria-label="Close"></button>
       <div class="top-toast-progress" style="animation-duration: ${duration}ms;"></div>
     `;
 
@@ -247,10 +247,12 @@ const App = {
       this.web3 = new Web3(window.ethereum);
       window.ethereum.on("accountsChanged", (accounts) => {
         if (accounts.length > 0) {
-          App.account = accounts[0];
-          App.refreshUI();
+          if (App.account) {
+            App.account = accounts[0];
+            App.refreshUI();
+          }
         } else {
-          location.reload();
+          App.logout(true);
         }
       });
       window.ethereum.on("chainChanged", () => {
@@ -259,6 +261,17 @@ const App = {
     }
 
     this.switchTab("disconnected");
+    const appSidebar = document.getElementById("appSidebar");
+    if (appSidebar) appSidebar.classList.add("d-none");
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) logoutBtn.classList.add("d-none");
+    const connectBtn = document.getElementById("connectWalletBtn");
+    if (connectBtn) connectBtn.classList.remove("d-none");
+
+    const dateEl = document.getElementById("currentDateDisplay");
+    if (dateEl) {
+      dateEl.innerText = new Date().toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+    }
     // Form starts completely blank without preselected deadline
 
     const deadlineInput = document.getElementById("createExactDeadline");
@@ -278,7 +291,18 @@ const App = {
     this.startDeadlineTicker();
   },
 
+  toggleSidebar: function () {
+    const sidebar = document.getElementById("appSidebar");
+    if (sidebar) {
+      sidebar.classList.toggle("sidebar-open");
+    }
+  },
+
   onBrandClick: function () {
+    if (!this.account) {
+      this.switchTab("disconnected");
+      return;
+    }
     if (this.activeRole === 1) {
       this.switchTab("shipper");
     } else if (this.activeRole === 2) {
@@ -295,8 +319,44 @@ const App = {
       return alert("MetaMask is not detected. Please install MetaMask to continue!");
     }
     try {
+      this.showTxLoading(
+        "Connecting MetaMask",
+        "Please approve the connection request in your MetaMask wallet extension...",
+        "Authorizing Web3 Account & Session"
+      );
+
       const accounts = await window.ethereum.request({ method: "eth_requestAccounts" });
+      if (!accounts || accounts.length === 0) {
+        this.hideTxLoading();
+        return;
+      }
       this.account = accounts[0];
+
+      // CRITICAL: IMMEDIATELY hide the connect/landing screen so it never flashes or remains visible!
+      const discEl = document.getElementById("view-disconnected");
+      if (discEl) discEl.classList.add("d-none");
+
+      // Update loading overlay message to show progress
+      const titleEl = document.getElementById("txLoadingTitle");
+      const msgEl = document.getElementById("txLoadingMsg");
+      const subEl = document.getElementById("txLoadingSub");
+      if (titleEl) titleEl.innerText = "Loading Freight Workspace";
+      if (msgEl) msgEl.innerText = "Synchronizing smart contracts & fetching verifiable escrow records...";
+      if (subEl) subEl.innerText = `Connected Account: ${this.account.substring(0, 6)}...${this.account.substring(38)}`;
+
+      // Immediately show sidebar & update header controls
+      const appSidebar = document.getElementById("appSidebar");
+      if (appSidebar) appSidebar.classList.remove("d-none");
+
+      const accountBadge = document.getElementById("accountBadge");
+      if (accountBadge) {
+        accountBadge.classList.remove("d-none");
+        accountBadge.innerText = `${this.account.substring(0, 6)}...${this.account.substring(38)}`;
+      }
+      const connectBtn = document.getElementById("connectWalletBtn");
+      if (connectBtn) connectBtn.classList.add("d-none");
+      const logoutBtn = document.getElementById("logoutBtn");
+      if (logoutBtn) logoutBtn.classList.remove("d-none");
 
       const escrowArtifact = await (await fetch("/build/contracts/LogisticsEscrow.json")).json();
       const tokenArtifact = await (await fetch("/build/contracts/CarrierReputationToken.json")).json();
@@ -306,17 +366,20 @@ const App = {
       // Update Network Indicator Badge
       const netBadge = document.getElementById("networkBadge");
       const netName = document.getElementById("networkName");
-      netBadge.classList.remove("d-none");
+      if (netBadge) netBadge.classList.remove("d-none");
 
       if (networkId == 5777 || chainId == 1337 || chainId == 5777) {
-        netName.innerText = "Ganache Local (127.0.0.1:7545)";
-        netBadge.className = "badge network-badge px-3 py-2 border-success text-success";
+        if (netName) netName.innerText = "Ganache Local (1337)";
+        if (netBadge) netBadge.className = "sidebar-net-pill net-ganache";
       } else if (chainId == 11155111 || networkId == 11155111) {
-        netName.innerText = "Ethereum Sepolia Testnet";
-        netBadge.className = "badge network-badge px-3 py-2 border-info text-info";
+        if (netName) netName.innerText = "Sepolia Testnet";
+        if (netBadge) netBadge.className = "sidebar-net-pill net-sepolia";
+      } else if (chainId == 1 || networkId == 1) {
+        if (netName) netName.innerText = "Ethereum Mainnet";
+        if (netBadge) netBadge.className = "sidebar-net-pill net-mainnet";
       } else {
-        netName.innerText = `Network ID: ${networkId}`;
-        netBadge.className = "badge network-badge px-3 py-2 border-warning text-warning";
+        if (netName) netName.innerText = `Chain ID: ${chainId || networkId}`;
+        if (netBadge) netBadge.className = "sidebar-net-pill";
       }
 
       // Match deployed network
@@ -333,11 +396,15 @@ const App = {
       }
 
       if (!deployedEscrow || !deployedToken) {
+        this.hideTxLoading();
+        this.switchTab("disconnected");
         return alert("Contracts are not deployed on network ID " + networkId + "! Run 'npx truffle migrate --reset'.");
       }
 
       const code = await this.web3.eth.getCode(deployedEscrow.address);
       if (!code || code === "0x" || code === "0x0") {
+        this.hideTxLoading();
+        this.switchTab("disconnected");
         return alert("No contract bytecode found at " + deployedEscrow.address + ". Run 'npx truffle migrate --reset' and refresh!");
       }
 
@@ -345,9 +412,90 @@ const App = {
       this.tokenContract = new this.web3.eth.Contract(tokenArtifact.abi, deployedToken.address);
 
       await this.refreshUI();
+      this.hideTxLoading();
     } catch (err) {
+      this.hideTxLoading();
       console.error("Wallet connection error:", err);
+      if (err && (err.code === 4001 || (err.message && err.message.includes("User rejected")))) {
+        return;
+      }
+      this.switchTab("disconnected");
       alert("Failed to connect wallet: " + (err.message || err));
+    }
+  },
+
+  logout: async function (force = false) {
+    if (!force) {
+      const confirmed = await this.showConfirmDialog({
+        title: "Disconnect Wallet",
+        icon: "🚪",
+        message: "Are you sure you want to log out and disconnect your wallet from LogiChain Escrow?",
+        okText: "Logout & Disconnect",
+        cancelText: "Cancel",
+        okBtnClass: "btn-danger"
+      });
+      if (!confirmed) return;
+    }
+
+    try {
+      if (window.ethereum && window.ethereum.request) {
+        await window.ethereum.request({
+          method: "wallet_revokePermissions",
+          params: [{ eth_accounts: {} }]
+        });
+      }
+    } catch (e) {
+      // EIP-2255 method fallback if not supported by current wallet
+    }
+
+    this.account = null;
+    this.activeRole = null;
+    this.isAdmin = false;
+    this.allAgreements = [];
+
+    // Reset badges & buttons
+    const accountBadge = document.getElementById("accountBadge");
+    if (accountBadge) {
+      accountBadge.classList.add("d-none");
+      accountBadge.innerText = "";
+    }
+    const roleBadge = document.getElementById("roleBadge");
+    if (roleBadge) {
+      roleBadge.classList.add("d-none");
+      roleBadge.innerText = "";
+    }
+    const repBadge = document.getElementById("reputationBadge");
+    if (repBadge) repBadge.classList.add("d-none");
+    const networkBadge = document.getElementById("networkBadge");
+    if (networkBadge) networkBadge.classList.add("d-none");
+
+    const connectBtn = document.getElementById("connectWalletBtn");
+    if (connectBtn) connectBtn.classList.remove("d-none");
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) logoutBtn.classList.add("d-none");
+
+    const appSidebar = document.getElementById("appSidebar");
+    if (appSidebar) {
+      appSidebar.classList.add("d-none");
+      appSidebar.classList.remove("sidebar-open");
+    }
+
+    const navTabsContainer = document.getElementById("navTabsContainer");
+    if (navTabsContainer) navTabsContainer.classList.add("d-none");
+    const mainNavPills = document.getElementById("mainNavPills");
+    if (mainNavPills) mainNavPills.innerHTML = "";
+
+    // Clear rendered lists so previous session data does not persist
+    const shipperList = document.getElementById("shipperShipmentsList");
+    if (shipperList) shipperList.innerHTML = "";
+    const carrierTasksList = document.getElementById("carrierTasksList");
+    if (carrierTasksList) carrierTasksList.innerHTML = "";
+    const ledgerTable = document.getElementById("agreementTableBody");
+    if (ledgerTable) ledgerTable.innerHTML = "";
+
+    this.switchTab("disconnected");
+    if (!force) {
+      this.showToast("Wallet Disconnected", "You have successfully logged out.", "info");
     }
   },
 
@@ -359,6 +507,9 @@ const App = {
     ]);
     this.isAdmin = (this.account.toLowerCase() === owner.toLowerCase());
 
+    const appSidebar = document.getElementById("appSidebar");
+    if (appSidebar) appSidebar.classList.remove("d-none");
+
     const accountBadge = document.getElementById("accountBadge");
     if (accountBadge) {
       accountBadge.classList.remove("d-none");
@@ -366,25 +517,35 @@ const App = {
     }
     const connectBtn = document.getElementById("connectWalletBtn");
     if (connectBtn) connectBtn.classList.add("d-none");
+    const logoutBtn = document.getElementById("logoutBtn");
+    if (logoutBtn) logoutBtn.classList.remove("d-none");
     const navTabsContainer = document.getElementById("navTabsContainer");
     if (navTabsContainer) navTabsContainer.classList.remove("d-none");
 
+    const userNameEl = document.getElementById("sidebarUserName");
+    const userAvatarEl = document.getElementById("sidebarUserAvatar");
+    const repBadgeRow = document.getElementById("reputationBadgeRow");
     const roleBadge = document.getElementById("roleBadge");
     const repBadge = document.getElementById("reputationBadge");
     if (roleBadge) roleBadge.classList.remove("d-none");
 
     // CASE 1: UNREGISTERED ACCOUNT (and not Admin)
     if (!user.isRegistered && !this.isAdmin) {
+      if (userNameEl) userNameEl.innerText = "Unregistered Account";
+      if (userAvatarEl) userAvatarEl.innerText = "📝";
       if (roleBadge) {
-        roleBadge.className = "badge bg-secondary px-3 py-2";
-        roleBadge.innerText = "Unregistered Account";
+        roleBadge.className = "badge role-badge sidebar-user-role-badge bg-secondary text-white";
+        roleBadge.innerText = "Unregistered";
       }
       if (repBadge) repBadge.classList.add("d-none");
+      if (repBadgeRow) repBadgeRow.classList.add("d-none");
       const navPillsContainer = document.getElementById("mainNavPills");
       if (navPillsContainer) {
         navPillsContainer.innerHTML = `
           <li class="nav-item">
-            <button class="nav-link active" onclick="App.switchTab('register')">📝 Profile Registration</button>
+            <button class="nav-link active" onclick="App.switchTab('register')">
+              <span>📝</span> <span>Profile Registration</span>
+            </button>
           </li>
         `;
       }
@@ -395,17 +556,20 @@ const App = {
     // CASE 2: PLATFORM ADMINISTRATOR (Deployer / Auditor)
     if (this.isAdmin && !user.isRegistered) {
       this.activeRole = "admin";
+      if (userNameEl) userNameEl.innerText = "Platform Auditor";
+      if (userAvatarEl) userAvatarEl.innerText = "👑";
       if (roleBadge) {
-        roleBadge.className = "badge bg-warning text-dark px-3 py-2 fw-bold";
-        roleBadge.innerText = "👑 Platform Administrator (Auditor)";
+        roleBadge.className = "badge role-badge sidebar-user-role-badge bg-warning text-dark fw-bold";
+        roleBadge.innerText = "Auditor";
       }
       if (repBadge) repBadge.classList.add("d-none");
+      if (repBadgeRow) repBadgeRow.classList.add("d-none");
       const navPillsContainer = document.getElementById("mainNavPills");
       if (navPillsContainer) {
         navPillsContainer.innerHTML = `
           <li class="nav-item">
             <button class="nav-link active" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-              📜 Public Distributed Audit Ledger
+              <span>📜</span> <span>Public Audit Ledger</span>
             </button>
           </li>
         `;
@@ -417,11 +581,14 @@ const App = {
     // CASE 3: SHIPPER (Role = 1)
     if (user.role == "1") {
       this.activeRole = 1;
+      if (userNameEl) userNameEl.innerText = user.name || "Shipper";
+      if (userAvatarEl) userAvatarEl.innerText = "📦";
       if (roleBadge) {
-        roleBadge.className = "badge bg-info text-dark px-3 py-2 fw-semibold";
-        roleBadge.innerText = `📦 Shipper: ${user.name}`;
+        roleBadge.className = "badge role-badge sidebar-user-role-badge bg-white text-primary fw-bold";
+        roleBadge.innerText = `📦 Shipper`;
       }
       if (repBadge) repBadge.classList.add("d-none");
+      if (repBadgeRow) repBadgeRow.classList.add("d-none");
 
       const targetTab = (this.currentTab === "ledger") ? "ledger" : "shipper";
       const navPillsContainer = document.getElementById("mainNavPills");
@@ -429,12 +596,12 @@ const App = {
         navPillsContainer.innerHTML = `
           <li class="nav-item">
             <button class="nav-link ${targetTab === 'shipper' ? 'active' : ''}" id="tab-btn-shipper" onclick="App.switchTab('shipper')">
-              📦 Shipper Workspace
+              <span>📦</span> <span>Shipper Workspace</span>
             </button>
           </li>
           <li class="nav-item">
             <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-              📜 Public Audit Ledger
+              <span>📜</span> <span>Public Audit Ledger</span>
             </button>
           </li>
         `;
@@ -452,9 +619,11 @@ const App = {
     // CASE 4: CARRIER (Role = 2)
     if (user.role == "2") {
       this.activeRole = 2;
+      if (userNameEl) userNameEl.innerText = user.name || "Carrier Fleet";
+      if (userAvatarEl) userAvatarEl.innerText = "🚚";
       if (roleBadge) {
-        roleBadge.className = "badge bg-success text-white px-3 py-2 fw-semibold";
-        roleBadge.innerText = `🚚 Carrier: ${user.name}`;
+        roleBadge.className = "badge role-badge sidebar-user-role-badge bg-white text-success fw-bold";
+        roleBadge.innerText = `🚚 Carrier`;
       }
 
       let repCrt = 0;
@@ -467,6 +636,7 @@ const App = {
         }
       }
       if (repBadge) repBadge.classList.remove("d-none");
+      if (repBadgeRow) repBadgeRow.classList.remove("d-none");
 
       let tier = "🥉 Bronze Tier (1.00x)";
       let progressPct = 0;
@@ -540,17 +710,17 @@ const App = {
         navPillsContainer.innerHTML = `
           <li class="nav-item">
             <button class="nav-link ${targetTab === 'carrier-profile' ? 'active' : ''}" id="tab-btn-carrier-profile" onclick="App.switchTab('carrier-profile')">
-              👤 Carrier Profile & Analytics
+              <span>👤</span> <span>Carrier Profile</span>
             </button>
           </li>
           <li class="nav-item">
             <button class="nav-link ${targetTab === 'carrier-tasks' ? 'active' : ''}" id="tab-btn-carrier-tasks" onclick="App.switchTab('carrier-tasks')">
-              🚚 Assigned Freight Tasks
+              <span>🚚</span> <span>Assigned Tasks</span>
             </button>
           </li>
           <li class="nav-item">
             <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-              📜 Public Audit Ledger
+              <span>📜</span> <span>Public Audit Ledger</span>
             </button>
           </li>
         `;
@@ -569,7 +739,7 @@ const App = {
 
   switchTab: function (tabName) {
     this.currentTab = tabName;
-    const views = ["disconnected", "register", "shipper", "carrier-profile", "carrier-tasks", "ledger"];
+    const views = ["disconnected", "register", "shipper", "create-agreement", "carrier-profile", "carrier-tasks", "ledger"];
     views.forEach(v => {
       const el = document.getElementById(`view-${v}`);
       if (el) el.classList.add("d-none");
@@ -578,13 +748,34 @@ const App = {
     const activeView = document.getElementById(`view-${tabName}`);
     if (activeView) activeView.classList.remove("d-none");
 
-    document.querySelectorAll(".custom-pills .nav-link").forEach(btn => btn.classList.remove("active"));
-    const activeBtn = document.getElementById(`tab-btn-${tabName}`);
+    document.querySelectorAll(".sidebar-nav-list .nav-link, .custom-pills .nav-link").forEach(btn => btn.classList.remove("active"));
+    const activeBtn = document.getElementById(`tab-btn-${tabName}`) || (tabName === "create-agreement" ? document.getElementById("tab-btn-shipper") : null);
     if (activeBtn) activeBtn.classList.add("active");
 
-    // Invalidate Leaflet map sizes if switching to shipper
-    if (tabName === "shipper" && this.isCreatePanelOpen) {
+    // Update Header Title & Breadcrumb
+    const pageTitle = document.getElementById("pageTitleDisplay");
+    const pageBreadcrumb = document.getElementById("pageBreadcrumbDisplay");
+    const titleMap = {
+      "disconnected": { title: "Decentralized Logistics Escrow", crumb: "/ Gateway" },
+      "register": { title: "Profile Registration", crumb: "/ Onboarding" },
+      "shipper": { title: "Shipper Freight Workspace", crumb: "/ Contracts & Escrow" },
+      "create-agreement": { title: "Draft Freight Agreement", crumb: "/ Shipper / New Agreement" },
+      "carrier-profile": { title: "Carrier Profile & Analytics", crumb: "/ Performance & Stake" },
+      "carrier-tasks": { title: "Assigned Freight Tasks", crumb: "/ Dispatch & Delivery Queue" },
+      "ledger": { title: "Public Distributed Audit Ledger", crumb: "/ Real-Time On-Chain Records" }
+    };
+    if (pageTitle && titleMap[tabName]) pageTitle.innerText = titleMap[tabName].title;
+    if (pageBreadcrumb && titleMap[tabName]) pageBreadcrumb.innerText = titleMap[tabName].crumb;
+
+    // Close mobile sidebar if open
+    const sidebar = document.getElementById("appSidebar");
+    if (sidebar) sidebar.classList.remove("sidebar-open");
+
+    // Invalidate Leaflet map sizes if switching to create-agreement
+    if (tabName === "create-agreement") {
+      this.initAllMaps();
       this.invalidateAllMaps();
+      setTimeout(() => this.invalidateAllMaps(), 150);
     }
   },
 
@@ -735,7 +926,7 @@ const App = {
     let content = "";
     // Completed or cancelled without expiry (notice statusIdx === 4 Refunded is NOT here, ensuring overdue refunded jobs show red EXPIRED)
     if (statusIdx === 3 || statusIdx === 6 || statusIdx === 7) {
-      content = `<span class="badge bg-secondary bg-opacity-50 text-light px-2 py-1">📅 ${deadlineDate}</span>`;
+      content = `<span class="badge badge-pale-secondary px-2 py-1 fw-semibold"><span class="me-1">📅</span>${deadlineDate}</span>`;
     } else if (diffSec <= 0) {
       const overdueSec = Math.abs(diffSec);
       let overdueStr = "";
@@ -748,7 +939,7 @@ const App = {
         const hours = Math.floor(overdueSec / 3600);
         overdueStr = `${hours}h overdue`;
       }
-      content = `<span class="badge bg-danger text-white px-2 py-1 fw-bold border border-danger shadow-sm"><span class="me-1">⚠️</span>EXPIRED: ${deadlineDate} (${overdueStr})</span>`;
+      content = `<span class="badge badge-pale-danger px-2 py-1 fw-semibold"><span class="me-1">⚠️</span>EXPIRED: ${deadlineDate} (${overdueStr})</span>`;
     } else if (diffSec < 86400) { // Under 24 hours (under 1 day)
       const hours = Math.floor(diffSec / 3600);
       const mins = Math.floor((diffSec % 3600) / 60);
@@ -761,11 +952,11 @@ const App = {
       } else {
         leftStr = `${secs}s left`;
       }
-      content = `<span class="badge bg-warning text-dark px-2 py-1 fw-bold border border-warning shadow-sm"><span class="me-1">⏰</span>DUE SOON (&lt;24h): ${deadlineDate} (${leftStr})</span>`;
+      content = `<span class="badge badge-pale-warning px-2 py-1 fw-semibold"><span class="me-1">⏰</span>DUE SOON (&lt;24h): ${deadlineDate} (${leftStr})</span>`;
     } else {
       const days = Math.floor(diffSec / 86400);
       const hours = Math.floor((diffSec % 86400) / 3600);
-      content = `<span class="badge bg-dark bg-opacity-75 text-info border border-secondary px-2 py-1"><span class="me-1">📅</span>Deadline: ${deadlineDate} (${days}d ${hours}h left)</span>`;
+      content = `<span class="badge badge-pale-secondary px-2 py-1 fw-semibold"><span class="me-1">📅</span>Deadline: ${deadlineDate} (${days}d ${hours}h left)</span>`;
     }
 
     if (isInnerUpdate) {
@@ -851,21 +1042,29 @@ const App = {
     "kota bharu": { lat: 6.1254, lng: 102.2386, name: "Pengkalan Chepa Industrial Hub, Kota Bharu, Kelantan" }
   },
 
-  toggleCreateAgreementPanel: function () {
-    const container = document.getElementById("createAgreementContainer");
-    const btnText = document.getElementById("createBtnText");
-    const btnIcon = document.getElementById("createBtnIcon");
-
-    this.isCreatePanelOpen = !this.isCreatePanelOpen;
-    if (this.isCreatePanelOpen) {
-      container.classList.remove("d-none");
-      btnText.innerText = "Close Creation Form";
-      btnIcon.innerText = "✖";
+  openCreateAgreementPage: function () {
+    this.isCreatePanelOpen = true;
+    this.switchTab("create-agreement");
+    this.loadCarriersDropdown();
+    this.recalculateShipperQuote();
+    setTimeout(() => {
       this.initAllMaps();
+      this.invalidateAllMaps();
+    }, 150);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  },
+
+  closeCreateAgreementPage: function () {
+    this.isCreatePanelOpen = false;
+    this.switchTab("shipper");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  },
+
+  toggleCreateAgreementPanel: function () {
+    if (this.currentTab === "create-agreement") {
+      this.closeCreateAgreementPage();
     } else {
-      container.classList.add("d-none");
-      btnText.innerText = "Create New Shipment Agreement";
-      btnIcon.innerText = "➕";
+      this.openCreateAgreementPage();
     }
   },
 
@@ -878,7 +1077,7 @@ const App = {
 
     const createTileLayer = () => {
       return L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "&copy; OpenStreetMap contributors",
+        attribution: "",
         maxZoom: 18
       });
     };
@@ -888,7 +1087,7 @@ const App = {
     // 1. Origin Map (Interactive: keyword search, pin drag, click to pick)
     const originEl = document.getElementById("originMap");
     if (originEl && !this.originMap) {
-      this.originMap = L.map("originMap", { zoomControl: true }).setView(this.originCoords || defaultCenter, this.originCoords ? 11 : 6);
+      this.originMap = L.map("originMap", { zoomControl: true, attributionControl: false }).setView(this.originCoords || defaultCenter, this.originCoords ? 11 : 6);
       createTileLayer().addTo(this.originMap);
 
       if (this.originCoords) {
@@ -921,7 +1120,7 @@ const App = {
     // 2. Destination Map (Interactive: keyword search, pin drag, click to pick)
     const destEl = document.getElementById("destMap");
     if (destEl && !this.destMap) {
-      this.destMap = L.map("destMap", { zoomControl: true }).setView(this.destCoords || defaultCenter, this.destCoords ? 11 : 6);
+      this.destMap = L.map("destMap", { zoomControl: true, attributionControl: false }).setView(this.destCoords || defaultCenter, this.destCoords ? 11 : 6);
       createTileLayer().addTo(this.destMap);
 
       if (this.destCoords) {
@@ -955,7 +1154,8 @@ const App = {
     const routeEl = document.getElementById("routeOverviewMap");
     if (routeEl && !this.routeOverviewMap) {
       this.routeOverviewMap = L.map("routeOverviewMap", {
-        zoomControl: true
+        zoomControl: true,
+        attributionControl: false
       }).setView(defaultCenter, 6);
       createTileLayer().addTo(this.routeOverviewMap);
       this.updateOverviewMap();
@@ -1658,10 +1858,8 @@ const App = {
 
       this.showToast("Agreement Dispatched", `Freight Agreement dispatched on-chain with ${totalEthStr} ETH locked in escrow!`, "success", 5000);
       
-      // Close creation panel and clear all form inputs for next time
-      if (this.isCreatePanelOpen) {
-        this.toggleCreateAgreementPanel();
-      }
+      // Close creation page and clear all form inputs for next time
+      this.closeCreateAgreementPage();
       this.clearCreateAgreementForm();
 
       let newId = null;
@@ -2102,13 +2300,8 @@ const App = {
     const ag = this.lastRefundedAgreement;
     if (!ag) return;
 
-    // 1. Open creation form if not already open
-    if (!this.isCreatePanelOpen) {
-      this.toggleCreateAgreementPanel();
-    }
-
-    // Refresh map layout
-    this.invalidateAllMaps();
+    // 1. Open dedicated agreement creation page
+    this.openCreateAgreementPage();
 
     // 2. Pre-fill cargo fields
     const descEl = document.getElementById("createCargoDesc");
@@ -2166,9 +2359,8 @@ const App = {
       this.onCarrierSelectChange();
     }
 
-    // 6. Scroll smoothly to creation form
-    const container = document.getElementById("createAgreementContainer");
-    if (container) container.scrollIntoView({ behavior: "smooth" });
+    // 6. Scroll smoothly to top of creation page
+    window.scrollTo({ top: 0, behavior: "smooth" });
 
     this.showToast("Reschedule Loaded", "Cargo parameters loaded. Please choose a new carrier fleet and specify a deadline.", "info");
   },
@@ -2500,9 +2692,9 @@ const App = {
       container.innerHTML = `
         <div class="text-center py-5 glass-card">
           <div class="display-6 mb-2">📦</div>
-          <h5 class="text-white fw-bold mb-1">No Shipment Agreements Found</h5>
-          <p class="text-muted small mb-3">${searchNotice}</p>
-          <button class="btn btn-primary btn-glow btn-sm px-4" onclick="App.toggleCreateAgreementPanel()">➕ Create New Shipment Agreement</button>
+          <h5 class="text-dark fw-bold mb-1">No Shipment Agreements Found</h5>
+          <p class="text-secondary small mb-3">${searchNotice}</p>
+          <button class="btn btn-primary btn-sm px-4 fw-bold shadow-sm" onclick="App.openCreateAgreementPage()">➕ Create New Shipment Agreement</button>
         </div>
       `;
       return;
@@ -2531,65 +2723,65 @@ const App = {
       let actionButtons = "";
       if (statusIdx === 6) {
         // Cancelled shipment: NO dispute button, NO transit overdue button
-        actionButtons += `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Cancelled & Refunded (${eth100Str})</span>`;
+        actionButtons += `<span class="badge badge-pale-danger px-3 py-1 fw-bold">🛑 Cancelled & Refunded (${eth100Str})</span>`;
       } else if (isLateOrRefunded) {
         if (statusIdx === 0) {
           // Carrier never accepted and deadline expired -> shipper cancels offer with 100% refund, 0 carrier penalty
-          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2 fw-bold" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">⏰ Cancel Expired Offer & Claim Refund (${eth100Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">⏰ Cancel Expired Offer & Claim Refund (${eth100Str})</button>`;
         } else if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
           // Carrier accepted, but missed pickup deadline
           if (hasRemainingEscrow && statusIdx !== 4 && statusIdx !== 7) {
-            actionButtons += `<button class="btn btn-sm btn-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.cancelMissedPickupShipment(${ag.id}, this)">❌ Cancel Shipment & Claim Refund (${eth100Str} • Carrier Missed Pickup)</button>`;
+            actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.cancelMissedPickupShipment(${ag.id}, this)">❌ Cancel Shipment & Claim Refund (${eth100Str} • Carrier Missed Pickup)</button>`;
           }
         } else if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
           if (ag.ms1SubmittedOnTime) {
             // Carrier submitted pickup proof before expiration, but delivery deadline expired before shipper validated
-            actionButtons += `<button class="btn btn-sm btn-warning me-2 fw-bold shadow-sm text-dark" onclick="event.stopPropagation(); App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate On-Time Pickup (${eth30Str}) & Claim 70% Refund (${eth70Str})</button>`;
+            actionButtons += `<button class="btn btn-sm btn-pale-warning me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate On-Time Pickup (${eth30Str}) & Claim 70% Refund (${eth70Str})</button>`;
           } else {
             // Carrier submitted pickup proof LATE after deadline: 0 ETH to carrier, 100% refund to shipper
-            actionButtons += `<button class="btn btn-sm btn-warning me-2 fw-bold shadow-sm text-dark" onclick="event.stopPropagation(); App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate Late Pickup & Claim 100% Refund (${eth100Str})</button>`;
+            actionButtons += `<button class="btn btn-sm btn-pale-warning me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate Late Pickup & Claim 100% Refund (${eth100Str})</button>`;
           }
         } else {
           // Pickup completed: cargo is in transit or late delivery
           if (ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
             if (ag.ms2SubmittedOnTime) {
               // Fair: submitted on or before deadline, so shipper approves normally!
-              actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-              actionButtons += `<button class="btn btn-sm btn-outline-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
+              actionButtons += `<button class="btn btn-sm btn-pale-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+              actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             } else {
               // Carrier submitted late delivery proof
               if (hasRemainingEscrow) {
-                actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">💰 Claim 70% Refund (${eth70Str}) & Validate Late Delivery Done</button>`;
+                actionButtons += `<button class="btn btn-sm btn-pale-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">💰 Claim 70% Refund (${eth70Str}) & Validate Late Delivery Done</button>`;
               } else {
-                actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
+                actionButtons += `<button class="btn btn-sm btn-pale-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
-              actionButtons += `<button class="btn btn-sm btn-outline-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
+              actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemainingEscrow && statusIdx !== 4 && statusIdx !== 3) {
-              actionButtons += `<button class="btn btn-sm btn-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.claimTimeoutRefund(${ag.id}, this)">⏰ Claim 70% Overdue Escrow Refund (${eth70Str})</button>`;
+              actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.claimTimeoutRefund(${ag.id}, this)">⏰ Claim 70% Overdue Escrow Refund (${eth70Str})</button>`;
             }
             if (statusIdx === 4) {
-              actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-2 py-1 me-2 fw-bold">⚠️ Overdue Escrow Refunded • Awaiting Late Delivery</span>`;
+              actionButtons += `<span class="badge badge-pale-warning px-2 py-1 me-2 fw-bold">⚠️ Overdue Escrow Refunded • Awaiting Late Delivery</span>`;
             } else {
-              actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-2 py-1 me-2 fw-bold">⚠️ Delivery Overdue — Carrier In Transit</span>`;
+              actionButtons += `<span class="badge badge-pale-warning px-2 py-1 me-2 fw-bold">⚠️ Delivery Overdue — Carrier In Transit</span>`;
             }
           }
         }
       } else {
         if (statusIdx === 0) {
-          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">❌ Cancel Agreement (${eth100Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-semibold" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">❌ Cancel Agreement (${eth100Str})</button>`;
         }
         if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
-          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">❌ Cancel Before Pickup (${eth100Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-semibold" onclick="event.stopPropagation(); App.cancelAgreement(${ag.id}, this)">❌ Cancel Before Pickup (${eth100Str})</button>`;
         }
         if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
-          actionButtons += `<button class="btn btn-sm btn-primary me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
-          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-primary me-2 fw-bold" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
-          actionButtons += `<button class="btn btn-sm btn-success me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-success me-2 fw-bold" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-danger me-2 fw-bold" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
         }
       }
 
@@ -2598,21 +2790,21 @@ const App = {
       if (actionButtons) {
         footerStatusHtml = actionButtons;
       } else if (statusIdx === 6) { // Cancelled
-        footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Agreement Cancelled • Escrow Fully Refunded (${eth100Str})</span>`;
+        footerStatusHtml = `<span class="badge badge-pale-danger px-3 py-1 fw-bold">🛑 Agreement Cancelled • Escrow Fully Refunded (${eth100Str})</span>`;
       } else if (statusIdx === 3) { // Completed
         if (ag.hasRefund || isPastDeadline || ag.isLate || ag.isLateCompleted) {
-          footerStatusHtml = `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">✅ Completed & Refunded (Late Delivery)</span>`;
+          footerStatusHtml = `<span class="badge badge-pale-success px-3 py-1 fw-bold">✅ Completed & Refunded (Late Delivery)</span>`;
         } else {
-          footerStatusHtml = `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">✅ Completed & Fully Settled</span>`;
+          footerStatusHtml = `<span class="badge badge-pale-success px-3 py-1 fw-bold">✅ Completed & Fully Settled</span>`;
         }
       } else if (statusIdx === 4) { // Refunded
         if (ag.ms1 && ag.ms1.completed) {
-          footerStatusHtml = `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">↩️ 70% Escrow Refunded (${eth70Str}) • Awaiting Late Delivery</span>`;
+          footerStatusHtml = `<span class="badge badge-pale-warning px-3 py-1 fw-bold">↩️ 70% Escrow Refunded (${eth70Str}) • Awaiting Late Delivery</span>`;
         } else {
-          footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Cancelled & Refunded (Carrier Missed Pickup)</span>`;
+          footerStatusHtml = `<span class="badge badge-pale-danger px-3 py-1 fw-bold">🛑 Cancelled & Refunded (Carrier Missed Pickup)</span>`;
         }
       } else if (statusIdx === 7) { // Rejected
-        footerStatusHtml = `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">❌ Carrier Declined Agreement (${eth100Str})</span>`;
+        footerStatusHtml = `<span class="badge badge-pale-danger px-3 py-1 fw-bold">❌ Carrier Declined Agreement (${eth100Str})</span>`;
       } else if (statusIdx === 0) { // PendingAcceptance
         footerStatusHtml = `<span class="text-warning extra-small">⏳ Awaiting Carrier Acceptance</span>`;
       } else {
@@ -2622,16 +2814,16 @@ const App = {
       let ms1TimeInfo = "";
       if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
         const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-dark">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge badge-pale-success py-0 px-1">On-Time</span>' : '<span class="badge badge-pale-danger py-0 px-1">Overdue</span>'}</div>`;
       }
       let ms2TimeInfo = "";
       if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
         const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-dark">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge badge-pale-success py-0 px-1">On-Time</span>' : '<span class="badge badge-pale-danger py-0 px-1">Overdue</span>'}</div>`;
       }
 
       const photoBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
-        `<button class="btn btn-sm btn-outline-info py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof (IPFS)</button>` : "";
+        `<button class="btn btn-sm btn-pale-primary py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof (IPFS)</button>` : "";
 
       html += `
         <div class="shipment-card" onclick="App.openShipmentDetailModal(${ag.id})" title="Click to expand full centralized overview and side-by-side photo proofs">
@@ -2759,7 +2951,7 @@ const App = {
         const deadlineDate = new Date(parseInt(req.deadline) * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
 
         const photoBtn = (req.initialPhotoIpfs && req.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
-          `<button class="btn btn-sm btn-outline-info py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${req.initialPhotoIpfs}', '${(req.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof</button>` : "";
+          `<button class="btn btn-sm btn-pale-primary py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${req.initialPhotoIpfs}', '${(req.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof</button>` : "";
 
         const originParsed = this.parseAddressAndDetails(req.origin);
         const destParsed = this.parseAddressAndDetails(req.dest);
@@ -2771,7 +2963,7 @@ const App = {
                 <span class="fw-bold text-white fs-6">${req.cargoTitle || `Freight Contract #${req.id}`}</span>
                 ${photoBtn}
               </div>
-              <span class="badge bg-warning text-dark px-3 py-1">Pending Acceptance</span>
+              <span class="badge badge-pale-warning px-3 py-1 fw-bold">Pending Acceptance</span>
             </div>
             <div class="row g-2 text-muted small mb-3">
               <div class="col-md-6">Route: <b>${originParsed.address}</b> ➔ <b>${destParsed.address}</b></div>
@@ -2782,8 +2974,8 @@ const App = {
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
               <span class="extra-small text-info opacity-75">🔍 Click card to expand details & proof ➔</span>
               <div class="d-flex gap-2">
-                <button class="btn btn-sm btn-outline-danger px-3" onclick="event.stopPropagation(); App.rejectCarrierShipment(${req.id}, this)">❌ Reject (100% Shipper Refund)</button>
-                <button class="btn btn-sm btn-success px-4 fw-bold" onclick="event.stopPropagation(); App.acceptCarrierShipment(${req.id}, this)">✅ Accept Freight Contract</button>
+                <button class="btn btn-sm btn-pale-danger px-3 fw-bold" onclick="event.stopPropagation(); App.rejectCarrierShipment(${req.id}, this)">❌ Reject (100% Shipper Refund)</button>
+                <button class="btn btn-sm btn-pale-success px-4 fw-bold" onclick="event.stopPropagation(); App.acceptCarrierShipment(${req.id}, this)">✅ Accept Freight Contract</button>
               </div>
             </div>
           </div>
@@ -2850,57 +3042,57 @@ const App = {
       if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
         if (isPastDeadline) {
           // Late pickup allowed, but 0 ETH payout
-          actionButtons += `<button class="btn btn-sm btn-warning text-dark px-3 fw-bold me-2 border-warning shadow-sm" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 0)">⚠️ Submit Late Pickup Proof (0 ETH • Overdue)</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold me-2 shadow-sm" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 0)">⚠️ Submit Late Pickup Proof (0 ETH • Overdue)</button>`;
         } else {
-          actionButtons += `<button class="btn btn-sm btn-primary px-3 fw-bold me-2" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 0)">🚚 Submit Pickup Proof (${eth30Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-primary px-3 fw-bold me-2" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 0)">🚚 Submit Pickup Proof (${eth30Str})</button>`;
         }
       } else if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
-        actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Approval (${eth30Str})</span>`;
+        actionButtons += `<span class="badge badge-pale-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Approval (${eth30Str})</span>`;
       }
 
       if ((statusIdx === 2 || (statusIdx === 4 && ag.ms1 && ag.ms1.completed)) && (!ag.ms2 || !ag.ms2.completed)) {
         if (isPastDeadline || statusIdx === 4) {
-          actionButtons += `<button class="btn btn-sm btn-warning text-dark px-3 fw-bold me-2 border-warning shadow-sm" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 1)">⚠️ Submit Late Delivery Proof (0 ETH • Overdue)</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold me-2 shadow-sm" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 1)">⚠️ Submit Late Delivery Proof (0 ETH • Overdue)</button>`;
         } else {
-          actionButtons += `<button class="btn btn-sm btn-success px-3 fw-bold me-2" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 1)">🏁 Submit Delivery Sign-off Proof (${eth70Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-pale-success px-3 fw-bold me-2" onclick="event.stopPropagation(); App.openCarrierProofModal(${ag.id}, 1)">🏁 Submit Delivery Sign-off Proof (${eth70Str})</button>`;
         }
       } else if ((statusIdx === 2 || statusIdx === 4) && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
         if (ag.ms2SubmittedOnTime) {
-          actionButtons += `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">⏳ Submitted On Time • Awaiting Shipper Approval (${eth70Str})</span>`;
+          actionButtons += `<span class="badge badge-pale-success px-3 py-1 fw-bold">⏳ Submitted On Time • Awaiting Shipper Approval (${eth70Str})</span>`;
         } else if (isPastDeadline || statusIdx === 4) {
-          actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Validation (Late Delivery Done)</span>`;
+          actionButtons += `<span class="badge badge-pale-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Validation (Late Delivery Done)</span>`;
         } else {
-          actionButtons += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Final Settlement (${eth70Str})</span>`;
+          actionButtons += `<span class="badge badge-pale-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Final Settlement (${eth70Str})</span>`;
         }
       }
 
       if (statusIdx === 3) {
         if (isPastDeadline || BigInt(ag.remainingBalance || 0) === BigInt(0)) {
-          actionButtons += `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">✅ Completed (Late Delivery • Escrow Refunded)</span>`;
+          actionButtons += `<span class="badge badge-pale-success px-3 py-1 fw-bold">✅ Completed (Late Delivery • Escrow Refunded)</span>`;
         } else {
-          actionButtons += `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">✅ Completed & Fully Paid</span>`;
+          actionButtons += `<span class="badge badge-pale-success px-3 py-1 fw-bold">✅ Completed & Fully Paid</span>`;
         }
       } else if (statusIdx === 4) {
         if (!actionButtons) {
-          actionButtons += `<span class="badge bg-secondary bg-opacity-25 border border-secondary text-light px-3 py-1 fw-bold">↩️ Escrow Refunded</span>`;
+          actionButtons += `<span class="badge badge-pale-secondary px-3 py-1 fw-bold">↩️ Escrow Refunded</span>`;
         }
       } else if (statusIdx === 6) {
-        actionButtons += `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-1 fw-bold">🛑 Cancelled by Shipper</span>`;
+        actionButtons += `<span class="badge badge-pale-danger px-3 py-1 fw-bold">🛑 Cancelled by Shipper</span>`;
       }
 
       let ms1TimeInfo = "";
       if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
         const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        ms1TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-dark">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge badge-pale-success py-0 px-1">On-Time</span>' : '<span class="badge badge-pale-danger py-0 px-1">Overdue</span>'}</div>`;
       }
       let ms2TimeInfo = "";
       if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
         const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        ms2TimeInfo = `<div class="extra-small text-muted mt-1">Submitted: <b class="text-dark">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge badge-pale-success py-0 px-1">On-Time</span>' : '<span class="badge badge-pale-danger py-0 px-1">Overdue</span>'}</div>`;
       }
 
       const photoBtn = (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "QmDefaultCargoProof") ? 
-        `<button class="btn btn-sm btn-outline-info py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof</button>` : "";
+        `<button class="btn btn-sm btn-pale-primary py-0 px-2 extra-small ms-2" onclick="event.stopPropagation(); App.showIpfsModal('${ag.initialPhotoIpfs}', '${(ag.cargoTitle || '').replace(/'/g, "\\'")}')">📷 View Cargo Proof</button>` : "";
 
       const originParsed = this.parseAddressAndDetails(ag.origin);
       const destParsed = this.parseAddressAndDetails(ag.dest);
@@ -2911,12 +3103,12 @@ const App = {
           <div class="alert alert-danger p-2 mb-2 rounded border border-danger border-opacity-75">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
               <div>
-                <span class="badge bg-danger text-white me-1">REJECTED</span>
+                <span class="badge badge-pale-danger me-1">REJECTED</span>
                 <span class="fw-bold text-danger small">Milestone 1 (Pickup) Proof Rejected by Shipper</span>
               </div>
-              ${ag.ms1Rejection.lastProof ? `<button class="btn btn-sm btn-outline-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms1Rejection.lastProof}', 'Rejected Pickup Proof')">📷 View Rejected Photo</button>` : ''}
+              ${ag.ms1Rejection.lastProof ? `<button class="btn btn-sm btn-pale-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms1Rejection.lastProof}', 'Rejected Pickup Proof')">📷 View Rejected Photo</button>` : ''}
             </div>
-            <div class="small text-white mt-1"><b>Shipper Rejection Note:</b> "${ag.ms1Rejection.reason}"</div>
+            <div class="small text-dark mt-1"><b>Shipper Rejection Note:</b> "${ag.ms1Rejection.reason}"</div>
           </div>
         `;
       }
@@ -2925,22 +3117,22 @@ const App = {
           <div class="alert alert-danger p-2 mb-2 rounded border border-danger border-opacity-75">
             <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
               <div>
-                <span class="badge bg-danger text-white me-1">REJECTED</span>
+                <span class="badge badge-pale-danger me-1">REJECTED</span>
                 <span class="fw-bold text-danger small">Milestone 2 (Delivery) Proof Rejected by Shipper</span>
               </div>
-              ${ag.ms2Rejection.lastProof ? `<button class="btn btn-sm btn-outline-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms2Rejection.lastProof}', 'Rejected Delivery Proof')">📷 View Rejected Photo</button>` : ''}
+              ${ag.ms2Rejection.lastProof ? `<button class="btn btn-sm btn-pale-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms2Rejection.lastProof}', 'Rejected Delivery Proof')">📷 View Rejected Photo</button>` : ''}
             </div>
-            <div class="small text-white mt-1"><b>Shipper Rejection Note:</b> "${ag.ms2Rejection.reason}"</div>
+            <div class="small text-dark mt-1"><b>Shipper Rejection Note:</b> "${ag.ms2Rejection.reason}"</div>
           </div>
         `;
       }
 
       const ms1StatusDisplay = (ag.ms1Rejection && ag.ms1Rejection.rejected) ?
-        '<span class="badge bg-danger text-white px-2 py-0">Rejected - Resubmission Needed</span>' :
+        '<span class="badge badge-pale-danger px-2 py-0">Rejected - Resubmission Needed</span>' :
         (ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>'));
 
       const ms2StatusDisplay = (ag.ms2Rejection && ag.ms2Rejection.rejected) ?
-        '<span class="badge bg-danger text-white px-2 py-0">Rejected - Resubmission Needed</span>' :
+        '<span class="badge badge-pale-danger px-2 py-0">Rejected - Resubmission Needed</span>' :
         (ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : (statusIdx === 4 ? '<span class="text-warning fw-bold">Late Delivery Required (+100 CRT)</span>' : 'Pending Final Delivery')));
 
       activeHtml += `
@@ -2977,7 +3169,7 @@ const App = {
 
     let list = [...agreementsList];
     if (list.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="9" class="text-center py-5 text-muted">No blockchain escrow records found on-chain. Dispatched agreements will appear here permanently indexed.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" class="text-center py-5 text-muted">No blockchain escrow records found on-chain. Dispatched agreements will appear here permanently indexed.</td></tr>`;
       return;
     }
 
@@ -2991,14 +3183,14 @@ const App = {
       let timelineHtml = `<div class="extra-small">`;
       if (ag.ms1 && ag.ms1.completed && ag.ms1SubTime > 0) {
         const t1 = new Date(ag.ms1SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        timelineHtml += `<div>📦 Pickup: <b class="text-white">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        timelineHtml += `<div>📦 Pickup: <b class="text-dark">${t1}</b> ${ag.ms1SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
       } else {
         timelineHtml += `<div class="text-muted">📦 Pickup: <i>Pending</i></div>`;
       }
 
       if (ag.ms2 && ag.ms2.completed && ag.ms2SubTime > 0) {
         const t2 = new Date(ag.ms2SubTime * 1000).toLocaleString([], { dateStyle: "short", timeStyle: "short" });
-        timelineHtml += `<div class="mt-1">🏁 Delivery: <b class="text-white">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
+        timelineHtml += `<div class="mt-1">🏁 Delivery: <b class="text-dark">${t2}</b> ${ag.ms2SubmittedOnTime ? '<span class="badge bg-success bg-opacity-25 text-success py-0 px-1">On-Time</span>' : '<span class="badge bg-danger bg-opacity-25 text-danger py-0 px-1">Overdue</span>'}</div>`;
       } else {
         timelineHtml += `<div class="text-muted mt-1">🏁 Delivery: <i>Pending</i></div>`;
       }
@@ -3006,7 +3198,7 @@ const App = {
 
       tbody.innerHTML += `
         <tr>
-          <td class="fw-bold text-white">#${ag.id}</td>
+          <td class="fw-bold text-dark">#${ag.id}</td>
           <td><code>${ag.shipper.substring(0, 6)}...${ag.shipper.substring(38)}</code></td>
           <td><code>${ag.carrier.substring(0, 6)}...${ag.carrier.substring(38)}</code></td>
           <td>${totalEth} ETH <span class="extra-small text-muted">(RM ${parseFloat(myrVal).toLocaleString()})</span></td>
@@ -3017,9 +3209,6 @@ const App = {
           <td>${timelineHtml}</td>
           <td>${deadlineDate} ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</td>
           <td><span class="badge ${statusDisplay.badgeClass}">${statusDisplay.text}</span></td>
-          <td class="text-end">
-            <button class="btn btn-sm btn-outline-primary extra-small px-3 py-1 fw-semibold" onclick="App.openShipmentDetailModal(${ag.id})">🔍 View Details</button>
-          </td>
         </tr>
       `;
     });
@@ -3122,9 +3311,27 @@ const App = {
     const statusIdx = parseInt(ag.status);
     const statusDisplay = this.getStatusDisplay(ag);
 
-    const eth30Str = this.formatPercentAmount(ag.totalValue, 30);
-    const eth70Str = this.formatPercentAmount(ag.totalValue, 70);
-    const eth100Str = this.formatPercentAmount(ag.totalValue, 100);
+    const totalWeiBig = BigInt(ag.totalValue || "0");
+
+    // Milestone 1 (30%)
+    const wei30 = (totalWeiBig * 30n) / 100n;
+    const eth30Val = parseFloat(this.web3 ? this.web3.utils.fromWei(wei30.toString(), "ether") : "0").toFixed(4);
+    const myr30Val = (parseFloat(eth30Val) * this.ethToMyrRate).toFixed(2);
+    const eth30Str = `${eth30Val} ETH`;
+    const myr30Str = `RM ${parseFloat(myr30Val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // Milestone 2 (70%)
+    const wei70 = (totalWeiBig * 70n) / 100n;
+    const eth70Val = parseFloat(this.web3 ? this.web3.utils.fromWei(wei70.toString(), "ether") : "0").toFixed(4);
+    const myr70Val = (parseFloat(eth70Val) * this.ethToMyrRate).toFixed(2);
+    const eth70Str = `${eth70Val} ETH`;
+    const myr70Str = `RM ${parseFloat(myr70Val).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    // Total Escrow (100%)
+    const ethTotalVal = parseFloat(this.web3 ? this.web3.utils.fromWei(ag.totalValue || "0", "ether") : "0").toFixed(4);
+    const myrTotalVal = (parseFloat(ethTotalVal) * this.ethToMyrRate).toFixed(2);
+    const eth100Str = `${ethTotalVal} ETH`;
+    const myr100Str = `RM ${parseFloat(myrTotalVal).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     // 1. Header Information
     const titleEl = document.getElementById("modalShipmentTitle");
@@ -3155,10 +3362,16 @@ const App = {
     if (ag.initialPhotoIpfs && ag.initialPhotoIpfs !== "" && ag.initialPhotoIpfs !== "N/A") {
       proofs.push({
         stage: 1,
-        title: "Stage 1: Origin Cargo Manifest",
-        stageBadge: "Stage 1 • Shipper Creation",
+        stageMainTitle: "Stage 1: Freight Inception",
+        photoTitle: "Origin Cargo Manifest",
         statusText: "Baseline Condition",
-        statusBadgeClass: "bg-primary bg-opacity-25 border border-primary text-primary",
+        statusBadgeClass: "badge-pale-primary",
+        percentNumber: "0%",
+        statusHeading: "Baseline Manifest",
+        statusBrief: "Initial cargo condition recorded on-chain by shipper prior to carrier dispatch.",
+        isMilestonePayout: false,
+        ethText: "0.0000 ETH",
+        myrText: "RM 0.00",
         cid: ag.initialPhotoIpfs,
         description: "Initial physical condition & packing manifest recorded by shipper before dispatch.",
         icon: "📦"
@@ -3169,10 +3382,16 @@ const App = {
     if (ag.ms1 && ag.ms1.completed && ag.ms1.ipfsProofHash && ag.ms1.ipfsProofHash !== "" && ag.ms1.ipfsProofHash !== "N/A" && ag.ms1.ipfsProofHash !== "null") {
       proofs.push({
         stage: 2,
-        title: "Stage 2: Carrier Pickup Verification",
-        stageBadge: `Stage 2 • Milestone 1 (${eth30Str})`,
+        stageMainTitle: "Stage 2: Milestone 1",
+        photoTitle: "Carrier Pickup Verification",
         statusText: ag.ms1.approved ? "Approved & Disbursed" : "Submitted for Review",
-        statusBadgeClass: ag.ms1.approved ? "bg-success bg-opacity-25 border border-success text-success" : "bg-warning bg-opacity-25 border border-warning text-warning",
+        statusBadgeClass: ag.ms1.approved ? "badge-pale-success" : "badge-pale-warning",
+        percentNumber: "30%",
+        statusHeading: ag.ms1.approved ? "Approved & Disbursed" : "Pending Verification",
+        statusBrief: ag.ms1.approved ? "Funds released to carrier fleet upon shipper confirmation." : "Carrier submitted pickup photo. Awaiting shipper review.",
+        isMilestonePayout: true,
+        ethText: eth30Str,
+        myrText: myr30Str,
         cid: ag.ms1.ipfsProofHash,
         description: "Inspection photo taken at origin loading dock by carrier driver prior to departure.",
         icon: "🚚"
@@ -3183,10 +3402,16 @@ const App = {
     if (ag.ms2 && ag.ms2.completed && ag.ms2.ipfsProofHash && ag.ms2.ipfsProofHash !== "" && ag.ms2.ipfsProofHash !== "N/A" && ag.ms2.ipfsProofHash !== "null") {
       proofs.push({
         stage: 3,
-        title: "Stage 3: Recipient Delivery Sign-off",
-        stageBadge: `Stage 3 • Milestone 2 (${eth70Str})`,
+        stageMainTitle: "Stage 3: Milestone 2",
+        photoTitle: "Recipient Delivery Sign-off",
         statusText: ag.ms2.approved ? "Final Settlement" : "Submitted for Sign-off",
-        statusBadgeClass: ag.ms2.approved ? "bg-success bg-opacity-25 border border-success text-success" : "bg-warning bg-opacity-25 border border-warning text-warning",
+        statusBadgeClass: ag.ms2.approved ? "badge-pale-success" : "badge-pale-warning",
+        percentNumber: "70%",
+        statusHeading: ag.ms2.approved ? "Final Settlement Done" : "Pending Sign-off",
+        statusBrief: ag.ms2.approved ? "Remaining escrow balance settled and transferred to carrier." : "Carrier submitted delivery receipt. Awaiting recipient sign-off.",
+        isMilestonePayout: true,
+        ethText: eth70Str,
+        myrText: myr70Str,
         cid: ag.ms2.ipfsProofHash,
         description: "Destination unloading photo & recipient delivery receipt confirmation.",
         icon: "🏁"
@@ -3201,10 +3426,10 @@ const App = {
         if (proofCountInfoEl) proofCountInfoEl.innerText = "No photographic proofs recorded on-chain yet";
         proofGalleryEl.innerHTML = `
           <div class="col-12">
-            <div class="p-4 text-center rounded bg-black bg-opacity-30 border border-secondary border-opacity-30">
+            <div class="p-4 text-center rounded-3 bg-light border">
               <span class="fs-1 d-block mb-2">📷</span>
-              <div class="text-white small fw-bold">No Inspection Photos Uploaded</div>
-              <div class="text-muted extra-small">No IPFS multihash proofs have been recorded for this agreement.</div>
+              <div class="text-dark small fw-bold">No Inspection Photos Uploaded</div>
+              <div class="text-muted extra-small">No IPFS multihash proofs have been recorded for this agreement yet.</div>
             </div>
           </div>
         `;
@@ -3223,38 +3448,69 @@ const App = {
 
         let galleryHtml = "";
         proofs.forEach(p => {
-          const safeTitle = (p.title || "").replace(/'/g, "\\'");
+          const safeTitle = (p.photoTitle || "").replace(/'/g, "\\'");
           galleryHtml += `
             <div class="${colClass}">
-              <div class="proof-card h-100">
-                <div class="d-flex justify-content-between align-items-start mb-2 gap-2">
-                  <div>
-                    <span class="proof-stage-badge mb-1 d-inline-block">${p.stageBadge}</span>
-                    <div class="fw-bold text-white small d-flex align-items-center gap-1">
-                      <span>${p.icon}</span> ${p.title}
+              <div class="proof-card">
+                <!-- 1. Big Title spanning the entire upper row of the card -->
+                <div class="proof-card-header mb-3 pb-2 border-bottom d-flex justify-content-between align-items-center flex-wrap gap-2">
+                  <div class="fs-5 fw-bold text-dark d-flex align-items-center gap-2">
+                    <span class="fs-4">${p.icon}</span> <span>${p.stageMainTitle}</span>
+                  </div>
+                  <span class="badge ${p.statusBadgeClass} px-3 py-1 fw-bold fs-7 shadow-sm">${p.statusText}</span>
+                </div>
+
+                <!-- 2. Release Percentage (40% Left) & ETH/RM Amounts (60% Right) -->
+                <div class="rounded-3 p-3 mb-3 border d-flex gap-3 align-items-center" style="background-color: #F8FAFC; border-color: #CBD5E1 !important;">
+                  <!-- Left Column (40%): Big percentage and status title -->
+                  <div class="d-flex flex-column justify-content-center pe-3 border-end" style="flex: 0 0 40%; max-width: 40%; border-color: #E2E8F0 !important;">
+                    <div class="fs-2 fw-bolder ${p.isMilestonePayout ? 'text-primary-blue' : 'text-secondary'} mb-1" style="line-height: 1;">
+                      ${p.percentNumber}
+                    </div>
+                    <div class="small fw-bold text-dark lh-sm">${p.statusHeading}</div>
+                  </div>
+
+                  <!-- Right Column (60%): Upper ETH, separator line, Lower RM -->
+                  <div class="d-flex flex-column justify-content-center flex-grow-1 ps-1">
+                    <div class="d-flex justify-content-between align-items-center py-1">
+                      <span class="extra-small text-uppercase text-secondary fw-semibold">Escrow:</span>
+                      <span class="fw-bold text-dark small font-monospace">${p.ethText}</span>
+                    </div>
+                    <div class="w-100 my-1" style="border-bottom: 1.5px solid #E2E8F0;"></div>
+                    <div class="d-flex justify-content-between align-items-center py-1">
+                      <span class="extra-small text-uppercase text-secondary fw-semibold">Fiat:</span>
+                      <span class="fw-bold text-success small font-monospace">${p.myrText}</span>
                     </div>
                   </div>
-                  <span class="badge ${p.statusBadgeClass} extra-small">${p.statusText}</span>
                 </div>
 
-                <div class="proof-img-box mb-2" onclick="App.showIpfsModal('${p.cid}', '${safeTitle}')" title="Click to zoom proof" style="cursor: zoom-in;">
-                  <img src="/ipfs/${p.cid}" 
-                       onerror="this.onerror=null; this.src='https://gateway.pinata.cloud/ipfs/${p.cid}'; this.onerror=function(){this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100%25\\' height=\\'100%25\\' viewBox=\\'0 0 300 200\\'><rect fill=\\'%231e293b\\' width=\\'300\\' height=\\'200\\'/><text fill=\\'%2394a3b8\\' font-family=\\'sans-serif\\' font-size=\\'13\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'>📷 IPFS Cargo Proof (${p.cid.substring(0,10)}...)</text></svg>';};" 
-                       alt="${p.title}" 
-                       class="img-fluid w-100 h-100" 
-                       style="object-fit: cover; object-position: center; transition: transform 0.3s ease;">
-                  <div class="position-absolute bottom-0 end-0 m-2 px-2 py-1 bg-black bg-opacity-75 rounded extra-small text-info border border-secondary border-opacity-30">
-                    🔍 Zoom
+                <!-- 3. Photo Section with Folder-Tab Title bound with the photo -->
+                <div class="proof-photo-wrapper mb-2">
+                  <div class="d-flex">
+                    <div class="proof-folder-tab">
+                      ${p.photoTitle}
+                    </div>
+                  </div>
+                  <div class="proof-img-box" onclick="App.showIpfsModal('${p.cid}', '${safeTitle}')" title="Click to zoom proof" style="cursor: zoom-in;">
+                    <img src="/ipfs/${p.cid}" 
+                         onerror="this.onerror=null; this.src='https://gateway.pinata.cloud/ipfs/${p.cid}'; this.onerror=function(){this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'100%25\\' height=\\'100%25\\' viewBox=\\'0 0 300 200\\'><rect fill=\\'%231e293b\\' width=\\'300\\' height=\\'200\\'/><text fill=\\'%2394a3b8\\' font-family=\\'sans-serif\\' font-size=\\'13\\' dy=\\'10.5\\' font-weight=\\'bold\\' x=\\'50%25\\' y=\\'50%25\\' text-anchor=\\'middle\\'>📷 IPFS Cargo Proof (${p.cid.substring(0,10)}...)</text></svg>';};" 
+                         alt="${p.photoTitle}" 
+                         class="img-fluid w-100 h-100" 
+                         style="object-fit: cover; object-position: center; transition: transform 0.3s ease;">
+                    <div class="position-absolute bottom-0 end-0 m-2 px-2 py-1 bg-black bg-opacity-75 rounded extra-small text-info border border-secondary border-opacity-30">
+                      🔍 Zoom
+                    </div>
                   </div>
                 </div>
 
+                <!-- 4. Description & IPFS Hash / Actions -->
                 <div class="extra-small text-muted mb-2 flex-grow-1">${p.description}</div>
 
-                <div class="mt-auto pt-2 border-top border-secondary border-opacity-30 d-flex justify-content-between align-items-center gap-1">
-                  <code class="text-info extra-small text-truncate" style="max-width: 140px;" title="${p.cid}">${p.cid}</code>
+                <div class="mt-auto pt-2 border-top border-secondary border-opacity-25 d-flex justify-content-between align-items-center gap-1">
+                  <code class="text-primary extra-small text-truncate" style="max-width: 140px;" title="${p.cid}">${p.cid}</code>
                   <div class="btn-group btn-group-sm">
-                    <button class="btn btn-outline-secondary btn-sm extra-small py-0 px-2" onclick="event.stopPropagation(); navigator.clipboard.writeText('${p.cid}'); alert('IPFS Multihash CID copied!');" title="Copy CID">📋</button>
-                    <a href="https://gateway.pinata.cloud/ipfs/${p.cid}" target="_blank" class="btn btn-outline-info btn-sm extra-small py-0 px-2" onclick="event.stopPropagation();" title="View on IPFS Gateway">🌐 Gateway</a>
+                    <button class="btn btn-pale-secondary btn-sm extra-small py-0 px-2" onclick="event.stopPropagation(); navigator.clipboard.writeText('${p.cid}'); alert('IPFS Multihash CID copied!');" title="Copy CID">📋 Copy</button>
+                    <a href="https://gateway.pinata.cloud/ipfs/${p.cid}" target="_blank" class="btn btn-pale-primary btn-sm extra-small py-0 px-2" onclick="event.stopPropagation();" title="View on IPFS Gateway">🌐 Gateway</a>
                   </div>
                 </div>
               </div>
@@ -3280,6 +3536,9 @@ const App = {
     const destManualEl = document.getElementById("modalDestManualDetails");
     if (destManualEl) destManualEl.innerText = destParsed.details;
 
+    const cargoDescEl = document.getElementById("modalCargoDescDisplay");
+    if (cargoDescEl) cargoDescEl.innerText = ag.cargoTitle || "Standard Freight Manifest";
+
     const declaredValueEl = document.getElementById("modalDeclaredValue");
     if (declaredValueEl) declaredValueEl.innerText = `RM ${parseFloat(ag.declaredValue || 25000).toLocaleString()}`;
     
@@ -3287,8 +3546,8 @@ const App = {
     if (deadlineEl) deadlineEl.innerHTML = this.formatDeadlineBadge(ag.deadline, statusIdx);
 
     // Financials
-    const totalEth = parseFloat(this.web3.utils.fromWei(ag.totalValue, "ether")).toFixed(4);
-    const totalMyr = (totalEth * this.ethToMyrRate).toFixed(2);
+    const totalEth = ethTotalVal;
+    const totalMyr = myrTotalVal;
     const totalEscrowEl = document.getElementById("modalTotalEscrow");
     if (totalEscrowEl) totalEscrowEl.innerText = `${totalEth} ETH (RM ${parseFloat(totalMyr).toLocaleString()})`;
 
@@ -3304,7 +3563,7 @@ const App = {
     const carrierAddrEl = document.getElementById("modalCarrierAddr");
     if (carrierAddrEl) carrierAddrEl.innerText = ag.carrier;
 
-    // Milestones with exact ETH and MYR
+    // Milestones with exact ETH and MYR & Pale Status Strips
     const ms1Badge = document.getElementById("modalMs1Badge");
     const ms1Sub = document.getElementById("modalMs1Sub");
     if (ms1Badge && ms1Sub) {
@@ -3314,16 +3573,16 @@ const App = {
         subTimeStr = ` [Submitted: ${t1} • ${ag.ms1SubmittedOnTime ? 'On-Time' : 'Overdue'}]`;
       }
       if (ag.ms1 && ag.ms1.approved) {
-        ms1Badge.className = "badge bg-success";
-        ms1Badge.innerText = `✓ Released (${eth30Str})`;
-        ms1Sub.innerText = `Pickup approved by Shipper & ${eth30Str} ETH payout disbursed.${subTimeStr}`;
+        ms1Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-success";
+        ms1Badge.innerText = `✓ Disbursed: 30% Payout (${eth30Str} • ${myr30Str})`;
+        ms1Sub.innerText = `Pickup approved by Shipper & ${eth30Str} payout disbursed.${subTimeStr}`;
       } else if (ag.ms1 && ag.ms1.completed) {
-        ms1Badge.className = "badge bg-warning text-dark";
-        ms1Badge.innerText = `Pending Shipper Approval (${eth30Str})`;
+        ms1Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-warning";
+        ms1Badge.innerText = `⏳ Pending Shipper Approval: 30% Payout (${eth30Str} • ${myr30Str})`;
         ms1Sub.innerText = `Carrier submitted pickup photo.${subTimeStr} Awaiting Shipper confirmation.`;
       } else {
-        ms1Badge.className = "badge bg-secondary";
-        ms1Badge.innerText = `Pending Pickup (${eth30Str})`;
+        ms1Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-secondary";
+        ms1Badge.innerText = `Pending Pickup Dispatch (30% Release: ${eth30Str} • ${myr30Str})`;
         ms1Sub.innerText = "Awaiting Carrier arrival at origin loading dock.";
       }
     }
@@ -3337,21 +3596,21 @@ const App = {
         subTimeStr2 = ` [Submitted: ${t2} • ${ag.ms2SubmittedOnTime ? 'On-Time' : 'Overdue'}]`;
       }
       if (ag.ms2 && ag.ms2.approved) {
-        ms2Badge.className = "badge bg-success";
-        ms2Badge.innerText = `✓ Released (${eth70Str})`;
-        ms2Sub.innerText = `Final delivery confirmed by Shipper & ${eth70Str} ETH payout disbursed.${subTimeStr2}`;
+        ms2Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-success";
+        ms2Badge.innerText = `✓ Settled: 70% Final Payout (${eth70Str} • ${myr70Str})`;
+        ms2Sub.innerText = `Final delivery confirmed by Shipper & ${eth70Str} payout disbursed.${subTimeStr2}`;
       } else if (ag.ms2 && ag.ms2.completed) {
-        ms2Badge.className = "badge bg-warning text-dark";
-        ms2Badge.innerText = `Pending Shipper Sign-off (${eth70Str})`;
+        ms2Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-warning";
+        ms2Badge.innerText = `⏳ Pending Shipper Sign-off: 70% Final Payout (${eth70Str} • ${myr70Str})`;
         ms2Sub.innerText = `Carrier submitted delivery sign-off.${subTimeStr2} Awaiting Shipper final settlement.`;
       } else {
-        ms2Badge.className = "badge bg-secondary";
-        ms2Badge.innerText = `Pending Delivery (${eth70Str})`;
+        ms2Badge.className = "w-100 py-2 px-3 text-center fw-bold small badge-pale-secondary";
+        ms2Badge.innerText = `Pending Delivery Settlement (70% Release: ${eth70Str} • ${myr70Str})`;
         ms2Sub.innerText = "Cargo en route to destination facility.";
       }
     }
 
-    // 4. Bottom Functional Action Buttons
+    // 4. Bottom Functional Action Buttons (Pale Themed)
     let actionsHtml = "";
     const isShipper = this.account && ag.shipper && ag.shipper.toLowerCase() === this.account.toLowerCase();
     const isCarrier = this.account && ag.carrier && ag.carrier.toLowerCase() === this.account.toLowerCase();
@@ -3365,53 +3624,53 @@ const App = {
 
       if (statusIdx === 6) {
         // Cancelled shipment: NO dispute, only info
-        actionsHtml += `<span class="badge bg-danger bg-opacity-25 border border-danger text-danger px-3 py-2 fw-bold me-2">🛑 Agreement Cancelled & Refunded (${eth100Str})</span>`;
+        actionsHtml += `<span class="badge badge-pale-danger px-3 py-2 fw-bold me-2">🛑 Agreement Cancelled & Refunded (${eth100Str})</span>`;
       } else if (isLateOrRefunded) {
         if (statusIdx === 0) {
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold" onclick="App.cancelAgreement(${ag.id}, this)">⏰ Cancel Expired Offer & Claim Refund (${eth100Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold" onclick="App.cancelAgreement(${ag.id}, this)">⏰ Cancel Expired Offer & Claim Refund (${eth100Str})</button>`;
         } else if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
           if (hasRemaining && statusIdx !== 4 && statusIdx !== 7) {
-            actionsHtml += `<button class="btn btn-sm btn-danger px-3 fw-bold" onclick="App.cancelMissedPickupShipment(${ag.id}, this)">❌ Cancel Shipment & Claim Refund (${eth100Str} • Carrier Missed Pickup)</button>`;
+            actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold" onclick="App.cancelMissedPickupShipment(${ag.id}, this)">❌ Cancel Shipment & Claim Refund (${eth100Str} • Carrier Missed Pickup)</button>`;
           }
         } else if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
           if (ag.ms1SubmittedOnTime) {
-            actionsHtml += `<button class="btn btn-sm btn-warning px-3 fw-bold shadow-sm text-dark" onclick="App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate On-Time Pickup (${eth30Str}) & Claim 70% Refund (${eth70Str})</button>`;
+            actionsHtml += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold shadow-sm" onclick="App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate On-Time Pickup (${eth30Str}) & Claim 70% Refund (${eth70Str})</button>`;
           } else {
-            actionsHtml += `<button class="btn btn-sm btn-warning px-3 fw-bold shadow-sm text-dark" onclick="App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate Late Pickup & Claim 100% Refund (${eth100Str})</button>`;
+            actionsHtml += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold shadow-sm" onclick="App.validatePickupAndClaimRefund(${ag.id}, this)">🚚 Validate Late Pickup & Claim 100% Refund (${eth100Str})</button>`;
           }
         } else {
           // Pickup completed: cargo is in transit or late delivery
           if (ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
             if (ag.ms2SubmittedOnTime) {
-              actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+              actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold shadow-sm" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
             } else {
               if (hasRemaining) {
-                actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">💰 Claim 70% Refund (${eth70Str}) & Validate Late Delivery Done</button>`;
+                actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">💰 Claim 70% Refund (${eth70Str}) & Validate Late Delivery Done</button>`;
               } else {
-                actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
+                actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
-              actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
+              actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemaining && statusIdx !== 4 && statusIdx !== 3) {
-              actionsHtml += `<button class="btn btn-sm btn-danger px-3 fw-bold shadow-sm" onclick="App.claimTimeoutRefund(${ag.id}, this)">⏰ Claim 70% Overdue Escrow Refund (${eth70Str})</button>`;
+              actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold shadow-sm" onclick="App.claimTimeoutRefund(${ag.id}, this)">⏰ Claim 70% Overdue Escrow Refund (${eth70Str})</button>`;
             }
           }
         }
       } else {
         if (statusIdx === 0) {
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.cancelAgreement(${ag.id}, this)">❌ Cancel Agreement (${eth100Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3" onclick="App.cancelAgreement(${ag.id}, this)">❌ Cancel Agreement (${eth100Str})</button>`;
         }
         if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.cancelAgreement(${ag.id}, this)">❌ Cancel Before Pickup (${eth100Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3" onclick="App.cancelAgreement(${ag.id}, this)">❌ Cancel Before Pickup (${eth100Str})</button>`;
         }
         if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
-          actionsHtml += `<button class="btn btn-sm btn-primary px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-primary px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
-          actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
         }
       }
     } else if (isCarrier) {
@@ -3420,39 +3679,35 @@ const App = {
 
       if (statusIdx === 0) {
         if (!isPastDeadline) {
-          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3" onclick="App.rejectCarrierShipment(${ag.id}, this)">❌ Reject Freight Contract</button>`;
-          actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.acceptCarrierShipment(${ag.id}, this)">✅ Accept Freight Contract</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-danger px-3" onclick="App.rejectCarrierShipment(${ag.id}, this)">❌ Reject Freight Contract</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold" onclick="App.acceptCarrierShipment(${ag.id}, this)">✅ Accept Freight Contract</button>`;
         } else {
-          actionsHtml += `<span class="badge bg-secondary text-light px-3 py-1">⚠️ Offer Expired</span>`;
+          actionsHtml += `<span class="badge badge-pale-secondary px-3 py-1">⚠️ Offer Expired</span>`;
         }
       }
       if (statusIdx === 1 && (!ag.ms1 || !ag.ms1.completed)) {
         if (!isPastDeadline) {
-          actionsHtml += `<button class="btn btn-sm btn-primary px-3 fw-bold" onclick="App.openCarrierProofModal(${ag.id}, 0)">🚚 Submit Pickup Proof (${eth30Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-primary px-3 fw-bold" onclick="App.openCarrierProofModal(${ag.id}, 0)">🚚 Submit Pickup Proof (${eth30Str})</button>`;
         } else {
-          actionsHtml += `<button class="btn btn-sm btn-warning text-dark px-3 fw-bold border-warning shadow-sm me-2" onclick="App.openCarrierProofModal(${ag.id}, 0)">⚠️ Submit Late Pickup Proof (0 ETH • Overdue)</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold me-2" onclick="App.openCarrierProofModal(${ag.id}, 0)">⚠️ Submit Late Pickup Proof (0 ETH • Overdue)</button>`;
         }
       }
       if ((statusIdx === 2 || (statusIdx === 4 && ag.ms1 && ag.ms1.completed)) && (!ag.ms2 || !ag.ms2.completed)) {
         if (isPastDeadline || statusIdx === 4) {
-          actionsHtml += `<button class="btn btn-sm btn-warning text-dark px-3 fw-bold border-warning shadow-sm" onclick="App.openCarrierProofModal(${ag.id}, 1)">⚠️ Submit Late Delivery Proof (0 ETH • Overdue)</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-warning px-3 fw-bold" onclick="App.openCarrierProofModal(${ag.id}, 1)">⚠️ Submit Late Delivery Proof (0 ETH • Overdue)</button>`;
         } else {
-          actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.openCarrierProofModal(${ag.id}, 1)">🏁 Submit Delivery Proof (${eth70Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-pale-success px-3 fw-bold" onclick="App.openCarrierProofModal(${ag.id}, 1)">🏁 Submit Delivery Proof (${eth70Str})</button>`;
         }
       } else if ((statusIdx === 2 || statusIdx === 4) && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
         if (ag.ms2SubmittedOnTime) {
-          actionsHtml += `<span class="badge bg-success bg-opacity-25 border border-success text-success px-3 py-1 fw-bold">⏳ Submitted On Time • Awaiting Shipper Approval (${eth70Str})</span>`;
+          actionsHtml += `<span class="badge badge-pale-success px-3 py-1 fw-bold">⏳ Submitted On Time • Awaiting Shipper Approval (${eth70Str})</span>`;
         } else if (isPastDeadline || statusIdx === 4) {
-          actionsHtml += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Validation (Late Delivery Done)</span>`;
+          actionsHtml += `<span class="badge badge-pale-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Validation (Late Delivery Done)</span>`;
         } else {
-          actionsHtml += `<span class="badge bg-warning bg-opacity-25 border border-warning text-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Final Settlement (${eth70Str})</span>`;
+          actionsHtml += `<span class="badge badge-pale-warning px-3 py-1 fw-bold">⏳ Awaiting Shipper Final Settlement (${eth70Str})</span>`;
         }
       }
     }
-
-    actionsHtml += `
-      <button type="button" class="btn btn-secondary btn-sm px-4" data-bs-dismiss="modal">Close</button>
-    `;
 
     const actionContainer = document.getElementById("modalActionButtonsContainer");
     if (actionContainer) actionContainer.innerHTML = actionsHtml;
