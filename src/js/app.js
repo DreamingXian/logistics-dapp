@@ -1776,6 +1776,27 @@ const App = {
         "Capture photo of recipient sign-off / arrival at destination unloader to request final settlement (+100 CRT).";
     }
 
+    const rejInfo = msIndex === 0 ? ag.ms1Rejection : ag.ms2Rejection;
+    const rejAlert = document.getElementById("carrierProofRejectionAlert");
+    const rejText = document.getElementById("carrierProofRejectionReasonText");
+    const prevPhotoBtnContainer = document.getElementById("carrierProofPrevPhotoBtnContainer");
+    const prevPhotoBtn = document.getElementById("carrierProofViewPrevPhotoBtn");
+
+    if (rejAlert) {
+      if (rejInfo && rejInfo.rejected) {
+        rejAlert.classList.remove("d-none");
+        if (rejText) rejText.innerText = rejInfo.reason ? `"${rejInfo.reason}"` : "Shipper requested a clearer inspection photo.";
+        if (rejInfo.lastProof && prevPhotoBtnContainer && prevPhotoBtn) {
+          prevPhotoBtnContainer.classList.remove("d-none");
+          prevPhotoBtn.onclick = () => App.showIpfsModal(rejInfo.lastProof, 'Previously Rejected Photo');
+        } else if (prevPhotoBtnContainer) {
+          prevPhotoBtnContainer.classList.add("d-none");
+        }
+      } else {
+        rejAlert.classList.add("d-none");
+      }
+    }
+
     const fileInput = document.getElementById("carrierProofFileInput");
     if (fileInput) fileInput.value = "";
     document.getElementById("carrierProofPreviewContainer").classList.add("d-none");
@@ -2206,6 +2227,17 @@ const App = {
           }
         } catch (e) {}
 
+        let ms1Rejection = { rejected: false, reason: "", lastProof: "" };
+        let ms2Rejection = { rejected: false, reason: "", lastProof: "" };
+        try {
+          if (this.escrowContract.methods.getMilestoneRejectionInfo) {
+            const r1 = await this.escrowContract.methods.getMilestoneRejectionInfo(i, 0).call();
+            ms1Rejection = { rejected: Boolean(r1.rejected), reason: r1.reason || "", lastProof: r1.lastRejectedProof || "" };
+            const r2 = await this.escrowContract.methods.getMilestoneRejectionInfo(i, 1).call();
+            ms2Rejection = { rejected: Boolean(r2.rejected), reason: r2.reason || "", lastProof: r2.lastRejectedProof || "" };
+          }
+        } catch (e) {}
+
         const ms1SubmittedOnTime = ms1 && ms1.completed && ms1SubTime > 0 && ms1SubTime <= parseInt(ag.deadline);
         const ms2SubmittedOnTime = ms2 && ms2.completed && ms2SubTime > 0 && ms2SubTime <= parseInt(ag.deadline);
 
@@ -2253,9 +2285,11 @@ const App = {
           ms1,
           ms1SubTime,
           ms1SubmittedOnTime,
+          ms1Rejection,
           ms2,
           ms2SubTime,
           ms2SubmittedOnTime,
+          ms2Rejection,
           wasAccepted
         });
       }
@@ -2414,6 +2448,7 @@ const App = {
             if (ag.ms2SubmittedOnTime) {
               // Fair: submitted on or before deadline, so shipper approves normally!
               actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+              actionButtons += `<button class="btn btn-sm btn-outline-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             } else {
               // Carrier submitted late delivery proof
               if (hasRemainingEscrow) {
@@ -2421,6 +2456,7 @@ const App = {
               } else {
                 actionButtons += `<button class="btn btn-sm btn-success me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
+              actionButtons += `<button class="btn btn-sm btn-outline-danger me-2 fw-bold shadow-sm" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemainingEscrow && statusIdx !== 4 && statusIdx !== 3) {
@@ -2442,9 +2478,11 @@ const App = {
         }
         if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
           actionButtons += `<button class="btn btn-sm btn-primary me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
           actionButtons += `<button class="btn btn-sm btn-success me-2" onclick="event.stopPropagation(); App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+          actionButtons += `<button class="btn btn-sm btn-outline-danger me-2" onclick="event.stopPropagation(); App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
         }
       }
 
@@ -2524,10 +2562,12 @@ const App = {
     const pickupCount = myTasks.filter(ag => parseInt(ag.status) === 1 && (!ag.ms1 || !ag.ms1.approved)).length;
     const transitCount = myTasks.filter(ag => parseInt(ag.status) === 2 || (parseInt(ag.status) === 4 && ag.ms1 && ag.ms1.completed)).length;
     const completedCount = myTasks.filter(ag => parseInt(ag.status) === 3).length;
+    const rejectedCount = myTasks.filter(ag => (ag.ms1Rejection && ag.ms1Rejection.rejected) || (ag.ms2Rejection && ag.ms2Rejection.rejected)).length;
 
     const pickupBadge = document.getElementById("carrierBadgePickup");
     const transitBadge = document.getElementById("carrierBadgeTransit");
     const completedBadge = document.getElementById("carrierBadgeCompleted");
+    const rejectedBadge = document.getElementById("carrierBadgeRejected");
 
     if (pickupBadge) {
       pickupBadge.innerText = pickupCount;
@@ -2543,6 +2583,11 @@ const App = {
       completedBadge.innerText = completedCount;
       if (completedCount > 0) completedBadge.classList.remove("d-none");
       else completedBadge.classList.add("d-none");
+    }
+    if (rejectedBadge) {
+      rejectedBadge.innerText = rejectedCount;
+      if (rejectedCount > 0) rejectedBadge.classList.remove("d-none");
+      else rejectedBadge.classList.add("d-none");
     }
   },
 
@@ -2654,6 +2699,7 @@ const App = {
         if (this.carrierFilter === "PickupRequired") return sIdx === 1 && (!ag.ms1 || !ag.ms1.approved);
         if (this.carrierFilter === "InTransit") return sIdx === 2 || (sIdx === 4 && ag.ms1 && ag.ms1.completed);
         if (this.carrierFilter === "Completed") return sIdx === 3;
+        if (this.carrierFilter === "RejectedProof") return (ag.ms1Rejection && ag.ms1Rejection.rejected) || (ag.ms2Rejection && ag.ms2Rejection.rejected);
         return (statusNames[sIdx] || "PickupRequired") === this.carrierFilter;
       });
     }
@@ -2752,6 +2798,44 @@ const App = {
       const originParsed = this.parseAddressAndDetails(ag.origin);
       const destParsed = this.parseAddressAndDetails(ag.dest);
 
+      let rejectionNotice = "";
+      if (ag.ms1Rejection && ag.ms1Rejection.rejected) {
+        rejectionNotice += `
+          <div class="alert alert-danger p-2 mb-2 rounded border border-danger border-opacity-75">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+              <div>
+                <span class="badge bg-danger text-white me-1">REJECTED</span>
+                <span class="fw-bold text-danger small">Milestone 1 (Pickup) Proof Rejected by Shipper</span>
+              </div>
+              ${ag.ms1Rejection.lastProof ? `<button class="btn btn-sm btn-outline-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms1Rejection.lastProof}', 'Rejected Pickup Proof')">📷 View Rejected Photo</button>` : ''}
+            </div>
+            <div class="small text-white mt-1"><b>Shipper Rejection Note:</b> "${ag.ms1Rejection.reason}"</div>
+          </div>
+        `;
+      }
+      if (ag.ms2Rejection && ag.ms2Rejection.rejected) {
+        rejectionNotice += `
+          <div class="alert alert-danger p-2 mb-2 rounded border border-danger border-opacity-75">
+            <div class="d-flex align-items-center justify-content-between flex-wrap gap-1">
+              <div>
+                <span class="badge bg-danger text-white me-1">REJECTED</span>
+                <span class="fw-bold text-danger small">Milestone 2 (Delivery) Proof Rejected by Shipper</span>
+              </div>
+              ${ag.ms2Rejection.lastProof ? `<button class="btn btn-sm btn-outline-danger py-0 px-2 extra-small ms-auto" onclick="event.stopPropagation(); App.showIpfsModal('${ag.ms2Rejection.lastProof}', 'Rejected Delivery Proof')">📷 View Rejected Photo</button>` : ''}
+            </div>
+            <div class="small text-white mt-1"><b>Shipper Rejection Note:</b> "${ag.ms2Rejection.reason}"</div>
+          </div>
+        `;
+      }
+
+      const ms1StatusDisplay = (ag.ms1Rejection && ag.ms1Rejection.rejected) ?
+        '<span class="badge bg-danger text-white px-2 py-0">Rejected - Resubmission Needed</span>' :
+        (ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>'));
+
+      const ms2StatusDisplay = (ag.ms2Rejection && ag.ms2Rejection.rejected) ?
+        '<span class="badge bg-danger text-white px-2 py-0">Rejected - Resubmission Needed</span>' :
+        (ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : (statusIdx === 4 ? '<span class="text-warning fw-bold">Late Delivery Required (+100 CRT)</span>' : 'Pending Final Delivery')));
+
       activeHtml += `
         <div class="shipment-card" onclick="App.openShipmentDetailModal(${ag.id})" title="Click to expand centralized task details & photo proofs">
           <div class="d-flex justify-content-between align-items-center mb-2 flex-wrap gap-2">
@@ -2761,11 +2845,12 @@ const App = {
             </div>
             <span class="badge ${statusDisplay.badgeClass} px-3 py-1">${statusDisplay.text}</span>
           </div>
+          ${rejectionNotice}
           <div class="row g-2 text-muted small mb-3">
             <div class="col-md-6">Route: <b>${originParsed.address}</b> ➔ <b>${destParsed.address}</b></div>
             <div class="col-md-6 text-md-end">Earnable Freight Payout: ${statusIdx === 4 ? '<b class="text-warning fs-6">0.0000 ETH</b> <span class="badge bg-warning bg-opacity-25 text-warning extra-small">Overdue Escrow Refunded</span>' : `<b class="text-success fs-6">${totalEth} ETH</b> <span class="text-info">(RM ${parseFloat(myrVal).toLocaleString()})</span>`}</div>
-            <div class="col-md-6">Milestone 1 (${eth30Str}): ${ag.ms1.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms1.completed ? '<span class="text-warning">Pending Shipper Confirmation</span>' : '<span class="text-info fw-bold">Action Needed: Pickup Cargo</span>')}${ms1TimeInfo}</div>
-            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ag.ms2.approved ? '<span class="text-success fw-bold">✓ Paid</span>' : (ag.ms2.completed ? '<span class="text-warning">Pending Shipper Verification</span>' : (statusIdx === 4 ? '<span class="text-warning fw-bold">Late Delivery Required (+100 CRT)</span>' : 'Pending Final Delivery'))}${ms2TimeInfo}</div>
+            <div class="col-md-6">Milestone 1 (${eth30Str}): ${ms1StatusDisplay}${ms1TimeInfo}</div>
+            <div class="col-md-6 text-md-end">Milestone 2 (${eth70Str}): ${ms2StatusDisplay}${ms2TimeInfo}</div>
             <div class="col-12 text-muted d-flex align-items-center gap-2 flex-wrap">Delivery Deadline: ${this.formatDeadlineBadge(ag.deadline, statusIdx)}</div>
           </div>
           <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 pt-2 border-top border-secondary border-opacity-25 mt-2">
@@ -3198,6 +3283,7 @@ const App = {
               } else {
                 actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold shadow-sm" onclick="App.validateLateDelivery(${ag.id}, this)">✅ Validate Late Delivery Done (Confirm Cargo Received)</button>`;
               }
+              actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
             }
           } else if (!ag.ms2 || !ag.ms2.completed) {
             if (hasRemaining && statusIdx !== 4 && statusIdx !== 3) {
@@ -3214,9 +3300,11 @@ const App = {
         }
         if (statusIdx === 1 && ag.ms1 && ag.ms1.completed && !ag.ms1.approved) {
           actionsHtml += `<button class="btn btn-sm btn-primary px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 0, this)">✅ Approve Pickup (Release ${eth30Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 0)">❌ Reject Submission</button>`;
         }
         if (statusIdx === 2 && ag.ms2 && ag.ms2.completed && !ag.ms2.approved) {
           actionsHtml += `<button class="btn btn-sm btn-success px-3 fw-bold" onclick="App.approveMilestone(${ag.id}, 1, this)">✅ Approve Delivery (Release ${eth70Str})</button>`;
+          actionsHtml += `<button class="btn btn-sm btn-outline-danger px-3 fw-bold ms-2" onclick="App.openRejectMilestoneModal(${ag.id}, 1)">❌ Reject Submission</button>`;
         }
       }
     } else if (isCarrier) {
@@ -3446,6 +3534,68 @@ const App = {
         this.showToast("Cancellation Cancelled", "Cancellation transaction was cancelled in MetaMask.", "cancel");
       } else {
         this.showToast("Cancellation Failed", err.message || String(err), "error");
+      }
+    } finally {
+      this.hideTxLoading(btn);
+    }
+  },
+
+  openRejectMilestoneModal: function (id, msIndex) {
+    const ag = (this.allAgreements || []).find(a => String(a.id) === String(id));
+    if (!ag) return;
+
+    document.getElementById("rejectMilestoneAgreementId").value = id;
+    document.getElementById("rejectMilestoneIndex").value = msIndex;
+    document.getElementById("rejectMilestoneTargetAgreement").innerText = ag.cargoTitle || `Freight Contract #${id}`;
+    
+    const badge = document.getElementById("rejectMilestoneTargetBadge");
+    if (badge) {
+      badge.innerText = msIndex === 0 ? "Milestone 1: Cargo Pickup Verification" : "Milestone 2: Final Delivery Verification";
+    }
+
+    const input = document.getElementById("rejectMilestoneReasonInput");
+    if (input) input.value = "";
+
+    const modalEl = document.getElementById("rejectMilestoneModal");
+    if (modalEl && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+  },
+
+  confirmRejectMilestoneProof: async function (btn) {
+    const id = document.getElementById("rejectMilestoneAgreementId").value;
+    const msIndex = parseInt(document.getElementById("rejectMilestoneIndex").value);
+    const reasonInput = document.getElementById("rejectMilestoneReasonInput");
+    const reason = (reasonInput ? reasonInput.value : "").trim();
+
+    if (!reason) {
+      this.showToast("Missing Reason", "Please enter a specific reason why this proof was rejected.", "error");
+      if (reasonInput) {
+        reasonInput.classList.add("form-field-invalid");
+        reasonInput.focus();
+        reasonInput.addEventListener("input", () => reasonInput.classList.remove("form-field-invalid"), { once: true });
+      }
+      return;
+    }
+
+    try {
+      this.showTxLoading("Rejecting Milestone Proof", `Recording rejection of Milestone ${msIndex + 1} on blockchain...`, "Notifies carrier to re-inspect and resubmit proof", btn);
+      await this.escrowContract.methods.rejectMilestoneProof(id, msIndex, reason).send({ from: this.account });
+
+      this.showToast("Proof Rejected", `Milestone ${msIndex + 1} proof rejected. Carrier has been notified to resubmit!`, "cancel", 5000);
+
+      const modalEl = document.getElementById("rejectMilestoneModal");
+      if (modalEl && typeof bootstrap !== "undefined" && bootstrap.Modal) {
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+      }
+      this.hideShipmentDetailModal();
+      await this.refreshUI();
+    } catch (err) {
+      console.error(err);
+      if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
+        this.showToast("Rejection Cancelled", "Rejection transaction was cancelled in MetaMask.", "cancel");
+      } else {
+        this.showToast("Rejection Failed", err.message || String(err), "error");
       }
     } finally {
       this.hideTxLoading(btn);

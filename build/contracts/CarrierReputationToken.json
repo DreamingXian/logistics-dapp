@@ -7929,12 +7929,12 @@
         }
       },
       "links": {},
-      "address": "0x47119120ef04173aAc1A71cD0ABA12b075376604",
-      "transactionHash": "0x46a0f15edcdf04bc606ec217fe23e322aa9cefc33cd332d0d329b95299aa4fb7"
+      "address": "0xC4CBD8A0e84c387C499cAbAd6CF1e19889c7CfD4",
+      "transactionHash": "0xf49278615d5288ff5b7d35b769884063fc53a425980af231c5db447de4d77905"
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2026-09-11T22:43:32.538Z",
+  "updatedAt": "2026-09-12T00:53:47.581Z",
   "devdoc": {
     "details": "Adheres to standard token metrics (18 decimals), but restricts mint/burn to LogisticsEscrow.",
     "kind": "dev",

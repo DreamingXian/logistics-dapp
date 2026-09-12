@@ -470,4 +470,65 @@ contract("LogisticsEscrow End-to-End Suite", (accounts) => {
       });
     });
   });
+
+  it("10. Should allow Shipper to reject milestone proof with reason, and Carrier to resubmit", async () => {
+    await escrow.registerUser("Acme Shipper", 1, { from: shipper });
+    await escrow.registerUser("FastTrans Carrier", 2, { from: carrier });
+
+    const deadline = (await getBlockTime()) + 3600;
+    const totalVal = web3.utils.toWei("1.0", "ether");
+
+    await escrow.createAgreement(
+      carrier,
+      deadline,
+      ["Solar Inverters", "Bayan Lepas", "Shah Alam", "QmSolarPhoto123", 45000],
+      { from: shipper, value: totalVal }
+    );
+
+    // Carrier accepts agreement
+    await escrow.acceptAgreement(1, { from: carrier });
+
+    // Carrier submits blurry/inadequate Pickup proof
+    await escrow.submitMilestoneProof(1, 0, "QmBlurryPickupProofBad", { from: carrier });
+    let ms1 = await escrow.getMilestoneDetails(1, 0);
+    assert.equal(ms1.completed, true);
+    assert.equal(ms1.ipfsProofHash, "QmBlurryPickupProofBad");
+
+    // Shipper rejects the proof with an explanatory reason
+    const rejectTx = await escrow.rejectMilestoneProof(1, 0, "Photo is too blurry and cargo seal number is unreadable", { from: shipper });
+    assert.equal(rejectTx.logs[0].event, "MilestoneRejected");
+    assert.equal(rejectTx.logs[0].args.reason, "Photo is too blurry and cargo seal number is unreadable");
+
+    // Verify milestone state was reset on-chain
+    ms1 = await escrow.getMilestoneDetails(1, 0);
+    assert.equal(ms1.completed, false);
+    assert.equal(ms1.approved, false);
+    assert.equal(ms1.ipfsProofHash, "");
+
+    // Verify rejection info getter
+    const rejectInfo = await escrow.getMilestoneRejectionInfo(1, 0);
+    assert.equal(rejectInfo.rejected, true);
+    assert.equal(rejectInfo.reason, "Photo is too blurry and cargo seal number is unreadable");
+    assert.equal(rejectInfo.lastRejectedProof, "QmBlurryPickupProofBad");
+
+    // Carrier resubmits with clean/valid inspection proof
+    await escrow.submitMilestoneProof(1, 0, "QmCrystalClearPickupProofGood", { from: carrier });
+
+    // Verify rejection state is automatically cleared
+    const rejectInfoAfter = await escrow.getMilestoneRejectionInfo(1, 0);
+    assert.equal(rejectInfoAfter.rejected, false);
+    assert.equal(rejectInfoAfter.reason, "");
+
+    ms1 = await escrow.getMilestoneDetails(1, 0);
+    assert.equal(ms1.completed, true);
+    assert.equal(ms1.ipfsProofHash, "QmCrystalClearPickupProofGood");
+
+    // Shipper now approves the resubmitted proof
+    await escrow.approveMilestonePayout(1, 0, { from: shipper });
+    ms1 = await escrow.getMilestoneDetails(1, 0);
+    assert.equal(ms1.approved, true);
+
+    const carrierRep = await token.balanceOf(carrier);
+    assert.equal(carrierRep.toString(), "50"); // +50 CRT awarded
+  });
 });

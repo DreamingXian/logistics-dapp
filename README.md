@@ -1,7 +1,7 @@
 # 🚢 LogisticsEscrow dApp — Decentralized Logistics Escrow & Milestone Platform
 
 [![Ethereum](https://img.shields.io/badge/Blockchain-Ethereum%20Sepolia-3c3c3d?style=for-the-badge&logo=ethereum)](https://sepolia.etherscan.io)
-[![Solidity](https://img.shields.io/badge/Solidity-v0.8.19-363636?style=for-the-badge&logo=solidity)](https://soliditylang.org/)
+[![Solidity](https://img.shields.io/badge/Solidity-v0.8.20-363636?style=for-the-badge&logo=solidity)](https://soliditylang.org/)
 [![Truffle](https://img.shields.io/badge/Framework-Truffle%20Suite-5e464d?style=for-the-badge&logo=truffle)](https://trufflesuite.com/)
 [![Web3.js](https://img.shields.io/badge/Web3-EIP--1193%20%2F%20Web3.js-f16822?style=for-the-badge)](https://web3js.readthedocs.io/)
 [![IPFS / Pinata](https://img.shields.io/badge/Storage-IPFS%20%2F%20Pinata%20Cloud-65C9CA?style=for-the-badge&logo=ipfs)](https://pinata.cloud)
@@ -21,8 +21,8 @@ An enterprise-grade decentralized logistics escrow and milestone-based settlemen
 
 | Smart Contract | Sepolia Contract Address | Etherscan Explorer | Blockscout Explorer | Deployment Tx |
 | :--- | :--- | :--- | :--- | :--- |
-| **`LogisticsEscrow`** | `0xde6a00d2a783a7986C81Ec66161D1466955e3FF5` | [View on Etherscan](https://sepolia.etherscan.io/address/0xde6a00d2a783a7986C81Ec66161D1466955e3FF5) | [View on Blockscout](https://eth-sepolia.blockscout.com/address/0xde6a00d2a783a7986C81Ec66161D1466955e3FF5) | [`0x39bd2c...`](https://sepolia.etherscan.io/tx/0x39bd2ccf941b89c2d508e792fd4c8057c50ee50511bc359dbe5a7125edd5156a) |
-| **`CarrierReputationToken` (CRT)** | `0x47119120ef04173aAc1A71cD0ABA12b075376604` | [View on Etherscan](https://sepolia.etherscan.io/address/0x47119120ef04173aAc1A71cD0ABA12b075376604) | [View on Blockscout](https://eth-sepolia.blockscout.com/address/0x47119120ef04173aAc1A71cD0ABA12b075376604) | [`0x46a0f1...`](https://sepolia.etherscan.io/tx/0x46a0f15edcdf04bc606ec217fe23e322aa9cefc33cd332d0d329b95299aa4fb7) |
+| **`LogisticsEscrow`** | `0x991502D770c542080826B89b043B4DCebE4A8D89` | [View on Etherscan](https://sepolia.etherscan.io/address/0x991502D770c542080826B89b043B4DCebE4A8D89) | [View on Blockscout](https://eth-sepolia.blockscout.com/address/0x991502D770c542080826B89b043B4DCebE4A8D89) | [`0xddf0c2...`](https://sepolia.etherscan.io/tx/0xddf0c25f62c1bae19fb6b1fc4be205e2564f4c734bd2ec44b2abd650907e00f9) |
+| **`CarrierReputationToken` (CRT)** | `0xC4CBD8A0e84c387C499cAbAd6CF1e19889c7CfD4` | [View on Etherscan](https://sepolia.etherscan.io/address/0xC4CBD8A0e84c387C499cAbAd6CF1e19889c7CfD4) | [View on Blockscout](https://eth-sepolia.blockscout.com/address/0xC4CBD8A0e84c387C499cAbAd6CF1e19889c7CfD4) | [`0xf49278...`](https://sepolia.etherscan.io/tx/0xf49278615d5288ff5b7d35b769884063fc53a425980af231c5db447de4d77905) |
 
 ---
 
@@ -160,7 +160,7 @@ http://localhost:5000
    - [Alchemy Sepolia Faucet](https://www.alchemy.com/faucets/ethereum-sepolia)
    - [Sepolia PoW Faucet](https://sepolia-faucet.pk910.de/)
 4. Click **"Connect Wallet"** on the dApp navigation bar.
-5. The application will detect the network as **Ethereum Sepolia (11155111)** and automatically bind to our deployed contracts (`0xde6a...` and `0x4711...`).
+5. The application will detect the network as **Ethereum Sepolia (11155111)** and automatically bind to our deployed contracts (`0x9915...` and `0xC4CB...`).
 
 #### Step 6: Test the Complete Logistics Workflow
 1. **Register as Shipper**: Fill in your company name, select role "Shipper", and click Register.
@@ -249,7 +249,7 @@ logistics-dapp/
 ├── package.json                             # Node.js project manifest & scripts
 ├── package-lock.json                        # Dependency lockfile
 ├── server.js                                # Express backend & Pinata IPFS multihash upload API
-├── truffle-config.js                        # Truffle compiler (v0.8.19) & network configurations
+├── truffle-config.js                        # Truffle compiler (v0.8.20) & network configurations
 └── README.md                                # Comprehensive documentation & operational guide
 ```
 
@@ -270,7 +270,8 @@ The project includes an automated test suite in [`test/logistics_escrow_test.js`
 | **7** | Missed Pickup Penalty | Carrier accepts agreement but misses deadline before pickup; shipper receives 100% refund, carrier penalized -150 CRT. |
 | **8** | Late Pickup Proof Submission | Allows carrier to submit delayed pickup proof for inspection without failing the transaction. |
 | **9** | Grace Period Approval | Shipper can approve milestone normally if proof was submitted by carrier before deadline, even if reviewed after deadline. |
-| **10** | Late Submission Zero Payout | Shipper validates late-submitted pickup; carrier receives 0 ETH and 0 CRT, and shipper gets 100% escrow refund. |
+| **10** | Milestone Proof Rejection & Resubmission | Shipper rejects inadequate proof with an on-chain reason; milestone resets to pending, carrier resubmits valid proof, and payout is approved (+50 CRT). |
+| **11** | Late Submission Zero Payout | Shipper validates late-submitted pickup; carrier receives 0 ETH and 0 CRT, and shipper gets 100% escrow refund. |
 
 **Run tests locally:**
 ```bash
