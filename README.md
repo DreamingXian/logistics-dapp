@@ -143,7 +143,6 @@ PINATA_JWT=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQi
 
 # Sepolia Public Testnet
 SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/alch_VsgfFKkyXk-tGtAPNT3rs
-DEPLOYER_PRIVATE_KEY=ee28a54f0654ba5c09e3f1b18aa6c14f48c6c649563c4c5c65168fc717b1eb0e
 
 
 #### Step 3: Install Web Server Dependencies
