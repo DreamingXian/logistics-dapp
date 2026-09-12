@@ -351,105 +351,122 @@ const App = {
     }
   },
 
-  refreshUI: async function () {
-    if (!this.account || !this.escrowContract) return;
-
-    // Show header badges
-    const accountBadge = document.getElementById("accountBadge");
-    accountBadge.classList.remove("d-none");
-    accountBadge.innerText = `${this.account.substring(0, 6)}...${this.account.substring(38)}`;
-    document.getElementById("connectWalletBtn").classList.add("d-none");
-    document.getElementById("navTabsContainer").classList.remove("d-none");
-
-    // Query on-chain user & authority state
-    const user = await this.escrowContract.methods.users(this.account).call();
-    const owner = await this.escrowContract.methods.owner().call();
+  refreshUserStats: async function () {
+    if (!this.account || !this.escrowContract) return null;
+    const [user, owner] = await Promise.all([
+      this.escrowContract.methods.users(this.account).call(),
+      this.escrowContract.methods.owner().call()
+    ]);
     this.isAdmin = (this.account.toLowerCase() === owner.toLowerCase());
+
+    const accountBadge = document.getElementById("accountBadge");
+    if (accountBadge) {
+      accountBadge.classList.remove("d-none");
+      accountBadge.innerText = `${this.account.substring(0, 6)}...${this.account.substring(38)}`;
+    }
+    const connectBtn = document.getElementById("connectWalletBtn");
+    if (connectBtn) connectBtn.classList.add("d-none");
+    const navTabsContainer = document.getElementById("navTabsContainer");
+    if (navTabsContainer) navTabsContainer.classList.remove("d-none");
 
     const roleBadge = document.getElementById("roleBadge");
     const repBadge = document.getElementById("reputationBadge");
-    roleBadge.classList.remove("d-none");
-
-    const navPillsContainer = document.getElementById("mainNavPills");
-    navPillsContainer.innerHTML = "";
+    if (roleBadge) roleBadge.classList.remove("d-none");
 
     // CASE 1: UNREGISTERED ACCOUNT (and not Admin)
     if (!user.isRegistered && !this.isAdmin) {
-      roleBadge.className = "badge bg-secondary px-3 py-2";
-      roleBadge.innerText = "Unregistered Account";
-      repBadge.classList.add("d-none");
-
-      navPillsContainer.innerHTML = `
-        <li class="nav-item">
-          <button class="nav-link active" onclick="App.switchTab('register')">📝 Profile Registration</button>
-        </li>
-      `;
-
+      if (roleBadge) {
+        roleBadge.className = "badge bg-secondary px-3 py-2";
+        roleBadge.innerText = "Unregistered Account";
+      }
+      if (repBadge) repBadge.classList.add("d-none");
+      const navPillsContainer = document.getElementById("mainNavPills");
+      if (navPillsContainer) {
+        navPillsContainer.innerHTML = `
+          <li class="nav-item">
+            <button class="nav-link active" onclick="App.switchTab('register')">📝 Profile Registration</button>
+          </li>
+        `;
+      }
       this.switchTab("register");
-      return;
+      return user;
     }
 
     // CASE 2: PLATFORM ADMINISTRATOR (Deployer / Auditor)
     if (this.isAdmin && !user.isRegistered) {
       this.activeRole = "admin";
-      roleBadge.className = "badge bg-warning text-dark px-3 py-2 fw-bold";
-      roleBadge.innerText = "👑 Platform Administrator (Auditor)";
-      repBadge.classList.add("d-none");
-
-      navPillsContainer.innerHTML = `
-        <li class="nav-item">
-          <button class="nav-link active" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-            📜 Public Distributed Audit Ledger
-          </button>
-        </li>
-      `;
-
+      if (roleBadge) {
+        roleBadge.className = "badge bg-warning text-dark px-3 py-2 fw-bold";
+        roleBadge.innerText = "👑 Platform Administrator (Auditor)";
+      }
+      if (repBadge) repBadge.classList.add("d-none");
+      const navPillsContainer = document.getElementById("mainNavPills");
+      if (navPillsContainer) {
+        navPillsContainer.innerHTML = `
+          <li class="nav-item">
+            <button class="nav-link active" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
+              📜 Public Distributed Audit Ledger
+            </button>
+          </li>
+        `;
+      }
       this.switchTab("ledger");
-      await this.loadAgreements();
-      return;
+      return user;
     }
 
     // CASE 3: SHIPPER (Role = 1)
     if (user.role == "1") {
       this.activeRole = 1;
-      roleBadge.className = "badge bg-info text-dark px-3 py-2 fw-semibold";
-      roleBadge.innerText = `📦 Shipper: ${user.name}`;
-      repBadge.classList.add("d-none");
+      if (roleBadge) {
+        roleBadge.className = "badge bg-info text-dark px-3 py-2 fw-semibold";
+        roleBadge.innerText = `📦 Shipper: ${user.name}`;
+      }
+      if (repBadge) repBadge.classList.add("d-none");
 
       const targetTab = (this.currentTab === "ledger") ? "ledger" : "shipper";
-      navPillsContainer.innerHTML = `
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'shipper' ? 'active' : ''}" id="tab-btn-shipper" onclick="App.switchTab('shipper')">
-            📦 Shipper Workspace
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-            📜 Public Audit Ledger
-          </button>
-        </li>
-      `;
-
-      await this.loadCarriersDropdown();
-      this.recalculateShipperQuote();
+      const navPillsContainer = document.getElementById("mainNavPills");
+      if (navPillsContainer) {
+        navPillsContainer.innerHTML = `
+          <li class="nav-item">
+            <button class="nav-link ${targetTab === 'shipper' ? 'active' : ''}" id="tab-btn-shipper" onclick="App.switchTab('shipper')">
+              📦 Shipper Workspace
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
+              📜 Public Audit Ledger
+            </button>
+          </li>
+        `;
+      }
+      try {
+        await this.loadCarriersDropdown();
+        this.recalculateShipperQuote();
+      } catch (err) {
+        console.warn("Could not load carrier dropdown:", err);
+      }
       this.switchTab(targetTab);
-    } 
-    // CASE 4: CARRIER (Role = 2)
-    else if (user.role == "2") {
-      this.activeRole = 2;
-      roleBadge.className = "badge bg-primary px-3 py-2 fw-semibold";
-      roleBadge.innerText = `🚚 Carrier: ${user.name}`;
+      return user;
+    }
 
-      const rawRep = await this.tokenContract.methods.balanceOf(this.account).call();
+    // CASE 4: CARRIER (Role = 2)
+    if (user.role == "2") {
+      this.activeRole = 2;
+      if (roleBadge) {
+        roleBadge.className = "badge bg-success text-white px-3 py-2 fw-semibold";
+        roleBadge.innerText = `🚚 Carrier: ${user.name}`;
+      }
+
       let repCrt = 0;
-      if (rawRep) {
-        if (BigInt(rawRep) > BigInt(1000000000000)) {
-          repCrt = Math.round(parseFloat(this.web3.utils.fromWei(rawRep, "ether")));
-        } else {
-          repCrt = parseInt(rawRep, 10) || 0;
+      if (this.tokenContract) {
+        try {
+          const rawRep = await this.tokenContract.methods.balanceOf(this.account).call();
+          repCrt = parseInt(rawRep);
+        } catch (e) {
+          console.error("Error reading CRT balance:", e);
         }
       }
-      repBadge.classList.remove("d-none");
+      if (repBadge) repBadge.classList.remove("d-none");
 
       let tier = "🥉 Bronze Tier (1.00x)";
       let progressPct = 0;
@@ -473,67 +490,80 @@ const App = {
         progressLabel = `${repCrt} / 450 CRT (${progressPct}% to Silver)`;
       }
 
-      repBadge.innerText = `${tierIcon} ${repCrt} CRT`;
+      if (repBadge) repBadge.innerText = `${tierIcon} ${repCrt} CRT`;
 
-      document.getElementById("carrierProfileTitle").innerText = user.name;
-      document.getElementById("carrierProfileAddress").innerText = this.account;
-      document.getElementById("carrierProfileTierIcon").innerText = tierIcon;
-      document.getElementById("carrierProfileTierBadge").innerText = tier;
-      document.getElementById("carrierProfileCrt").innerText = `${repCrt} CRT`;
+      const pTitle = document.getElementById("carrierProfileTitle");
+      if (pTitle) pTitle.innerText = user.name;
+      const pAddr = document.getElementById("carrierProfileAddress");
+      if (pAddr) pAddr.innerText = this.account;
+      const pIcon = document.getElementById("carrierProfileTierIcon");
+      if (pIcon) pIcon.innerText = tierIcon;
+      const pBadge = document.getElementById("carrierProfileTierBadge");
+      if (pBadge) pBadge.innerText = tier;
+      const pCrt = document.getElementById("carrierProfileCrt");
+      if (pCrt) pCrt.innerText = `${repCrt} CRT`;
 
       const progTierBadge = document.getElementById("carrierProgressionTierBadge");
       if (progTierBadge) progTierBadge.innerText = tier;
-
       const progBar = document.getElementById("carrierTierProgressBar");
       if (progBar) progBar.style.width = `${progressPct}%`;
-
       const progPercent = document.getElementById("carrierTierProgressPercent");
       if (progPercent) progPercent.innerText = progressLabel;
 
       const stakedEth = parseFloat(this.web3.utils.fromWei(user.securityStake, "ether"));
-      document.getElementById("carrierStakeBalance").innerText = `${stakedEth.toFixed(3)} ETH (RM ${(stakedEth * this.ethToMyrRate).toFixed(2)})`;
+      const stakeBal = document.getElementById("carrierStakeBalance");
+      if (stakeBal) stakeBal.innerText = `${stakedEth.toFixed(3)} ETH (RM ${(stakedEth * this.ethToMyrRate).toFixed(2)})`;
 
-      // Check if stake is below 0.01 ETH minimum threshold
       const reactivateBtn = document.getElementById("btnReactivateStake");
       const withdrawBtn = document.getElementById("btnWithdrawStake");
       const stakeStatusBadge = document.getElementById("carrierStakeStatus");
 
       if (stakedEth < 0.01) {
-        reactivateBtn.classList.remove("d-none");
-        withdrawBtn.classList.add("d-none");
-        stakeStatusBadge.className = "badge bg-danger";
-        stakeStatusBadge.innerText = "Suspended (Collateral Slashed Below 0.01 ETH)";
+        if (reactivateBtn) reactivateBtn.classList.remove("d-none");
+        if (withdrawBtn) withdrawBtn.classList.add("d-none");
+        if (stakeStatusBadge) {
+          stakeStatusBadge.className = "badge bg-danger";
+          stakeStatusBadge.innerText = "Suspended (Collateral Slashed Below 0.01 ETH)";
+        }
       } else {
-        reactivateBtn.classList.add("d-none");
-        withdrawBtn.classList.remove("d-none");
-        stakeStatusBadge.className = "badge bg-success";
-        stakeStatusBadge.innerText = "Active & Listed for Shippers";
+        if (reactivateBtn) reactivateBtn.classList.add("d-none");
+        if (withdrawBtn) withdrawBtn.classList.remove("d-none");
+        if (stakeStatusBadge) {
+          stakeStatusBadge.className = "badge bg-success";
+          stakeStatusBadge.innerText = "Active & Listed for Shippers";
+        }
       }
 
-      // Preserve currently active tab if valid, otherwise default to carrier-profile
       const targetTab = (this.currentTab === "carrier-tasks" || this.currentTab === "ledger") ? this.currentTab : "carrier-profile";
-
-      navPillsContainer.innerHTML = `
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'carrier-profile' ? 'active' : ''}" id="tab-btn-carrier-profile" onclick="App.switchTab('carrier-profile')">
-            👤 Carrier Profile & Analytics
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'carrier-tasks' ? 'active' : ''}" id="tab-btn-carrier-tasks" onclick="App.switchTab('carrier-tasks')">
-            🚚 Assigned Freight Tasks
-          </button>
-        </li>
-        <li class="nav-item">
-          <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
-            📜 Public Audit Ledger
-          </button>
-        </li>
-      `;
-
+      const navPillsContainer = document.getElementById("mainNavPills");
+      if (navPillsContainer) {
+        navPillsContainer.innerHTML = `
+          <li class="nav-item">
+            <button class="nav-link ${targetTab === 'carrier-profile' ? 'active' : ''}" id="tab-btn-carrier-profile" onclick="App.switchTab('carrier-profile')">
+              👤 Carrier Profile & Analytics
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link ${targetTab === 'carrier-tasks' ? 'active' : ''}" id="tab-btn-carrier-tasks" onclick="App.switchTab('carrier-tasks')">
+              🚚 Assigned Freight Tasks
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link ${targetTab === 'ledger' ? 'active' : ''}" id="tab-btn-ledger" onclick="App.switchTab('ledger')">
+              📜 Public Audit Ledger
+            </button>
+          </li>
+        `;
+      }
       this.switchTab(targetTab);
+      return user;
     }
+    return user;
+  },
 
+  refreshUI: async function () {
+    if (!this.account || !this.escrowContract) return;
+    await this.refreshUserStats();
     await this.loadAgreements();
   },
 
@@ -1615,7 +1645,7 @@ const App = {
       const weiVal = this.web3.utils.toWei(totalEthStr, "ether");
 
       this.showTxLoading("Depositing Escrow Funds", `Please confirm the transaction in MetaMask to lock ${totalEthStr} ETH in escrow...`, "Smart contract will lock funds until milestones are approved", btn);
-      await this.escrowContract.methods.createAgreement(
+      const txRes = await this.escrowContract.methods.createAgreement(
         carrier,
         deadlineTimestamp,
         cargoSpec
@@ -1623,6 +1653,8 @@ const App = {
         from: this.account,
         value: weiVal
       });
+
+      this.hideTxLoading(btn);
 
       this.showToast("Agreement Dispatched", `Freight Agreement dispatched on-chain with ${totalEthStr} ETH locked in escrow!`, "success", 5000);
       
@@ -1632,7 +1664,21 @@ const App = {
       }
       this.clearCreateAgreementForm();
 
-      await this.refreshUI();
+      let newId = null;
+      if (txRes && txRes.events && txRes.events.AgreementCreated) {
+        newId = txRes.events.AgreementCreated.returnValues.agreementId;
+      }
+      if (!newId) {
+        try {
+          newId = await this.escrowContract.methods.totalAgreements().call();
+        } catch (e) {}
+      }
+
+      if (newId) {
+        await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(newId)]);
+      } else {
+        await this.refreshUI();
+      }
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -1678,12 +1724,14 @@ const App = {
     try {
       this.showTxLoading("Accepting Freight Contract", `Confirming acceptance of Freight Contract #${id} in MetaMask...`, "Locks freight contract to your fleet", btn);
       await this.escrowContract.methods.acceptAgreement(id).send({ from: this.account });
+      this.hideTxLoading(btn);
+
       try {
         localStorage.setItem(`carrier_accepted_${id}`, "true");
       } catch (storageErr) {}
       this.showToast("Task Accepted", `Accepted Freight Contract #${id}! Agreement is now [Pickup Required].`, "success");
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -1713,9 +1761,11 @@ const App = {
     try {
       this.showTxLoading("Rejecting Freight Contract", `Processing rejection of Contract #${id} in MetaMask...`, "100% escrow will be returned to shipper", btn);
       await this.escrowContract.methods.rejectAgreement(id).send({ from: this.account });
+      this.hideTxLoading(btn);
+
       this.showToast("Contract Rejected", `Freight Contract #${id} rejected. 100% escrow refunded to shipper.`, "cancel");
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -1868,6 +1918,7 @@ const App = {
       // Step 2: Submit to smart contract
       this.showTxLoading(`Recording ${msTitle} Proof`, "Confirming transaction in MetaMask to record proof on-chain...", "Awaiting local EVM ledger update", submitBtn);
       await this.escrowContract.methods.submitMilestoneProof(id, msIndex, finalCid).send({ from: this.account });
+      this.hideTxLoading(submitBtn);
 
       this.showToast("Proof Recorded", `Milestone ${msIndex + 1} (${msTitle}) proof recorded on blockchain!`, "success");
       
@@ -1875,8 +1926,7 @@ const App = {
       this.hideCarrierProofModal();
       this.hideShipmentDetailModal();
 
-      // Refresh UI while remaining on the current tab (Assigned Freight Tasks)
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error("Milestone proof submission error:", err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -1922,6 +1972,8 @@ const App = {
         btn
       );
       await this.escrowContract.methods.validatePickupAndClaimTimeoutRefund(id).send({ from: this.account });
+      this.hideTxLoading(btn);
+
       this.showToast(
         "Pickup Validated",
         isOnTime ? `Pickup validated (${eth30Str} paid) & 70% refund (${eth70Str}) claimed!` : `Late pickup validated (0 ETH to carrier) & 100% refund (${eth100Str}) claimed!`,
@@ -1929,7 +1981,7 @@ const App = {
         5000
       );
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -1968,11 +2020,12 @@ const App = {
     try {
       this.showTxLoading("Claiming Overdue Escrow Refund", "Confirming refund transaction in MetaMask...", "Escrow funds return to your wallet", btn);
       await this.escrowContract.methods.claimTimeoutRefund(id).send({ from: this.account });
-      
+      this.hideTxLoading(btn);
+
       this.lastRefundedAgreement = ag;
       this.showToast("Refund Processed", isPickupDone ? `Claimed 70% overdue escrow refund (${eth70Str})!` : `Freight Contract #${id} cancelled & 100% escrow refunded!`, "success", 5000);
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
 
       if (!isPickupDone && ag) {
         // Missed pickup: automatically display Reschedule Prompt Dialog
@@ -2024,9 +2077,11 @@ const App = {
     try {
       this.showTxLoading("Validating Delivery Receipt", "Confirming late delivery validation in MetaMask...", "Smart contract settlement & completion", btn);
       await this.escrowContract.methods.validateLateDelivery(id).send({ from: this.account });
+      this.hideTxLoading(btn);
+
       this.showToast("Delivery Validated", "Late delivery receipt validated! Shipment marked as Completed.", "success");
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -2184,11 +2239,122 @@ const App = {
   },
 
   // ================= LOAD & RENDER CONTRACTS =================
+  fetchSingleAgreement: async function (i, acceptedAgreementIds = null) {
+    if (!this.escrowContract) return null;
+    try {
+      // Step 1: Query core contract structs in parallel
+      const [ag, cargo, ms1, ms2] = await Promise.all([
+        this.escrowContract.methods.getAgreementDetails(i).call(),
+        this.escrowContract.methods.getAgreementCargo(i).call(),
+        this.escrowContract.methods.getMilestoneDetails(i, 0).call(),
+        this.escrowContract.methods.getMilestoneDetails(i, 1).call(),
+      ]);
+
+      // Step 2: Query timestamps, rejection state, and status flags in parallel
+      const auxPromises = [
+        this.escrowContract.methods.getMilestoneSubmissionTime ? 
+          this.escrowContract.methods.getMilestoneSubmissionTime(i, 0).call().catch(() => 0) : Promise.resolve(0),
+        this.escrowContract.methods.getMilestoneSubmissionTime ? 
+          this.escrowContract.methods.getMilestoneSubmissionTime(i, 1).call().catch(() => 0) : Promise.resolve(0),
+        this.escrowContract.methods.getMilestoneRejectionInfo ? 
+          this.escrowContract.methods.getMilestoneRejectionInfo(i, 0).call().catch(() => ({ rejected: false, reason: "", lastRejectedProof: "" })) : Promise.resolve({ rejected: false, reason: "", lastRejectedProof: "" }),
+        this.escrowContract.methods.getMilestoneRejectionInfo ? 
+          this.escrowContract.methods.getMilestoneRejectionInfo(i, 1).call().catch(() => ({ rejected: false, reason: "", lastRejectedProof: "" })) : Promise.resolve({ rejected: false, reason: "", lastRejectedProof: "" }),
+        this.escrowContract.methods.getAgreementStatusFlags ? 
+          this.escrowContract.methods.getAgreementStatusFlags(i).call().catch(() => null) : Promise.resolve(null),
+      ];
+
+      const [t1, t2, r1, r2, flags] = await Promise.all(auxPromises);
+      const ms1SubTime = parseInt(t1 || 0);
+      const ms2SubTime = parseInt(t2 || 0);
+      const ms1Rejection = { rejected: Boolean(r1 && r1.rejected), reason: (r1 && r1.reason) || "", lastProof: (r1 && r1.lastRejectedProof) || "" };
+      const ms2Rejection = { rejected: Boolean(r2 && r2.rejected), reason: (r2 && r2.reason) || "", lastProof: (r2 && r2.lastRejectedProof) || "" };
+
+      const ms1SubmittedOnTime = ms1 && ms1.completed && ms1SubTime > 0 && ms1SubTime <= parseInt(ag.deadline);
+      const ms2SubmittedOnTime = ms2 && ms2.completed && ms2SubTime > 0 && ms2SubTime <= parseInt(ag.deadline);
+
+      let hasRefund = parseInt(ag.status) === 4 || parseInt(ag.status) === 6 || parseInt(ag.status) === 7;
+      let isLate = false;
+      if (flags) {
+        if (flags.hasRefund) hasRefund = true;
+        if (flags.isLate) isLate = true;
+      }
+
+      if (parseInt(ag.status) === 3 && (isLate || (ag.deadline && parseInt(ag.deadline) < this.getNowSec()))) {
+        hasRefund = true;
+        isLate = true;
+      }
+
+      const wasAccepted = (acceptedAgreementIds && acceptedAgreementIds.has(String(i))) || 
+                          parseInt(ag.status) === 1 || 
+                          parseInt(ag.status) === 2 || 
+                          parseInt(ag.status) === 3 || 
+                          parseInt(ag.status) === 4 ||
+                          Boolean(ms1 && (ms1.completed || ms1.approved)) ||
+                          Boolean(ms2 && (ms2.completed || ms2.approved)) ||
+                          (localStorage.getItem(`carrier_accepted_${i}`) === "true");
+
+      return {
+        id: ag.id,
+        shipper: ag.shipper,
+        carrier: ag.carrier,
+        totalValue: ag.totalValue,
+        remainingBalance: ag.remainingBalance,
+        deadline: ag.deadline,
+        status: ag.status,
+        cargoTitle: cargo.cargoTitle || `Freight Contract #${i}`,
+        origin: cargo.originLocation || "Origin Hub",
+        dest: cargo.destLocation || "Destination Hub",
+        initialPhotoIpfs: cargo.initialPhotoIpfs || "QmDefaultCargoProof",
+        declaredValue: cargo.declaredValue || "25000",
+        hasRefund,
+        isLate,
+        ms1,
+        ms1SubTime,
+        ms1SubmittedOnTime,
+        ms1Rejection,
+        ms2,
+        ms2SubTime,
+        ms2SubmittedOnTime,
+        ms2Rejection,
+        wasAccepted
+      };
+    } catch (err) {
+      console.error(`Error fetching agreement #${i}:`, err);
+      return null;
+    }
+  },
+
+  updateSingleAgreementInPlace: async function (id) {
+    const updated = await this.fetchSingleAgreement(id);
+    if (updated) {
+      const idx = (this.allAgreements || []).findIndex(a => String(a.id) === String(id));
+      if (idx !== -1) {
+        this.allAgreements[idx] = updated;
+      } else {
+        this.allAgreements.unshift(updated);
+      }
+      this.renderShipperView();
+      this.renderCarrierProfileView();
+      this.renderCarrierTasksView();
+      this.renderLedgerTable(this.allAgreements);
+    }
+  },
+
   loadAgreements: async function () {
     if (!this.escrowContract) return;
     try {
-      const total = await this.escrowContract.methods.totalAgreements().call();
+      const totalStr = await this.escrowContract.methods.totalAgreements().call();
+      const total = parseInt(totalStr || 0);
       this.allAgreements = [];
+
+      if (total === 0) {
+        this.renderShipperView();
+        this.renderCarrierProfileView();
+        this.renderCarrierTasksView();
+        this.renderLedgerTable(this.allAgreements);
+        return;
+      }
 
       let acceptedAgreementIds = new Set();
       try {
@@ -2212,87 +2378,28 @@ const App = {
         console.warn("Could not query AgreementAccepted events:", evErr);
       }
 
-      for (let i = 1; i <= parseInt(total); i++) {
-        const ag = await this.escrowContract.methods.getAgreementDetails(i).call();
-        const cargo = await this.escrowContract.methods.getAgreementCargo(i).call();
-        const ms1 = await this.escrowContract.methods.getMilestoneDetails(i, 0).call();
-        const ms2 = await this.escrowContract.methods.getMilestoneDetails(i, 1).call();
+      // IDs list
+      const ids = [];
+      for (let i = total; i >= 1; i--) {
+        ids.push(i);
+      }
 
-        let ms1SubTime = 0;
-        let ms2SubTime = 0;
-        try {
-          if (this.escrowContract.methods.getMilestoneSubmissionTime) {
-            ms1SubTime = parseInt(await this.escrowContract.methods.getMilestoneSubmissionTime(i, 0).call());
-            ms2SubTime = parseInt(await this.escrowContract.methods.getMilestoneSubmissionTime(i, 1).call());
-          }
-        } catch (e) {}
-
-        let ms1Rejection = { rejected: false, reason: "", lastProof: "" };
-        let ms2Rejection = { rejected: false, reason: "", lastProof: "" };
-        try {
-          if (this.escrowContract.methods.getMilestoneRejectionInfo) {
-            const r1 = await this.escrowContract.methods.getMilestoneRejectionInfo(i, 0).call();
-            ms1Rejection = { rejected: Boolean(r1.rejected), reason: r1.reason || "", lastProof: r1.lastRejectedProof || "" };
-            const r2 = await this.escrowContract.methods.getMilestoneRejectionInfo(i, 1).call();
-            ms2Rejection = { rejected: Boolean(r2.rejected), reason: r2.reason || "", lastProof: r2.lastRejectedProof || "" };
-          }
-        } catch (e) {}
-
-        const ms1SubmittedOnTime = ms1 && ms1.completed && ms1SubTime > 0 && ms1SubTime <= parseInt(ag.deadline);
-        const ms2SubmittedOnTime = ms2 && ms2.completed && ms2SubTime > 0 && ms2SubTime <= parseInt(ag.deadline);
-
-        let hasRefund = parseInt(ag.status) === 4 || parseInt(ag.status) === 6 || parseInt(ag.status) === 7;
-        let isLate = false;
-        try {
-          if (this.escrowContract.methods.getAgreementStatusFlags) {
-            const flags = await this.escrowContract.methods.getAgreementStatusFlags(i).call();
-            if (flags.hasRefund) hasRefund = true;
-            if (flags.isLate) isLate = true;
-          }
-        } catch (e) {
-          // Fallback if flags not present
-        }
-
-        if (parseInt(ag.status) === 3 && (isLate || (ag.deadline && parseInt(ag.deadline) < this.getNowSec()))) {
-          hasRefund = true;
-          isLate = true;
-        }
-
-        const wasAccepted = acceptedAgreementIds.has(String(i)) || 
-                            parseInt(ag.status) === 1 || 
-                            parseInt(ag.status) === 2 || 
-                            parseInt(ag.status) === 3 || 
-                            parseInt(ag.status) === 4 ||
-                            Boolean(ms1 && (ms1.completed || ms1.approved)) ||
-                            Boolean(ms2 && (ms2.completed || ms2.approved)) ||
-                            (localStorage.getItem(`carrier_accepted_${i}`) === "true");
-
-        this.allAgreements.push({
-          id: ag.id,
-          shipper: ag.shipper,
-          carrier: ag.carrier,
-          totalValue: ag.totalValue,
-          remainingBalance: ag.remainingBalance,
-          deadline: ag.deadline,
-          status: ag.status,
-          cargoTitle: cargo.cargoTitle || `Freight Contract #${i}`,
-          origin: cargo.originLocation || "Origin Hub",
-          dest: cargo.destLocation || "Destination Hub",
-          initialPhotoIpfs: cargo.initialPhotoIpfs || "QmDefaultCargoProof",
-          declaredValue: cargo.declaredValue || "25000",
-          hasRefund,
-          isLate,
-          ms1,
-          ms1SubTime,
-          ms1SubmittedOnTime,
-          ms1Rejection,
-          ms2,
-          ms2SubTime,
-          ms2SubmittedOnTime,
-          ms2Rejection,
-          wasAccepted
+      // Controlled concurrency: batch size 6 (optimal for browser socket connection pool)
+      const BATCH_SIZE = 6;
+      const loadedAgreements = [];
+      for (let b = 0; b < ids.length; b += BATCH_SIZE) {
+        const chunk = ids.slice(b, b + BATCH_SIZE);
+        const chunkResults = await Promise.all(
+          chunk.map(id => this.fetchSingleAgreement(id, acceptedAgreementIds))
+        );
+        chunkResults.forEach(res => {
+          if (res) loadedAgreements.push(res);
         });
       }
+
+      // Sort ascending by ID to preserve default ordering across all views
+      loadedAgreements.sort((a, b) => parseInt(a.id) - parseInt(b.id));
+      this.allAgreements = loadedAgreements;
 
       this.renderShipperView();
       this.renderCarrierProfileView();
@@ -3408,9 +3515,11 @@ const App = {
     try {
       this.showTxLoading("Disbursing Milestone Payout", `Confirming release of ${amtStr} in MetaMask...`, "Smart contract will disburse ETH to carrier wallet", btn);
       await this.escrowContract.methods.approveMilestonePayout(id, msIndex).send({ from: this.account });
+      this.hideTxLoading(btn);
+
       this.showToast("Milestone Approved", `Milestone payout approved & ${amtStr} disbursed to Carrier wallet!`, "success", 5000);
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
@@ -3464,10 +3573,12 @@ const App = {
       } else {
         await this.escrowContract.methods.cancelBeforePickup(id).send({ from: this.account });
       }
+      this.hideTxLoading(btn);
+
       this.lastRefundedAgreement = ag;
       this.showToast("Agreement Cancelled", `Agreement cancelled and 100% escrow (${eth100Str}) refunded!`, "success", 5000);
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
 
       if (statusIdx === 0 && ag) {
         const titleEl = document.getElementById("rescheduleModalCargoTitle");
@@ -3515,10 +3626,12 @@ const App = {
       } else {
         await this.escrowContract.methods.claimTimeoutRefund(id).send({ from: this.account });
       }
+      this.hideTxLoading(btn);
+
       this.lastRefundedAgreement = ag;
       this.showToast("Shipment Cancelled", `Freight Contract #${id} cancelled and 100% escrow refunded due to missed pickup!`, "success", 5000);
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
 
       if (ag) {
         const titleEl = document.getElementById("rescheduleModalCargoTitle");
@@ -3581,6 +3694,7 @@ const App = {
     try {
       this.showTxLoading("Rejecting Milestone Proof", `Recording rejection of Milestone ${msIndex + 1} on blockchain...`, "Notifies carrier to re-inspect and resubmit proof", btn);
       await this.escrowContract.methods.rejectMilestoneProof(id, msIndex, reason).send({ from: this.account });
+      this.hideTxLoading(btn);
 
       this.showToast("Proof Rejected", `Milestone ${msIndex + 1} proof rejected. Carrier has been notified to resubmit!`, "cancel", 5000);
 
@@ -3589,7 +3703,7 @@ const App = {
         bootstrap.Modal.getOrCreateInstance(modalEl).hide();
       }
       this.hideShipmentDetailModal();
-      await this.refreshUI();
+      await Promise.all([this.refreshUserStats(), this.updateSingleAgreementInPlace(id)]);
     } catch (err) {
       console.error(err);
       if (err.code === 4001 || (err.message && (err.message.includes("denied") || err.message.includes("rejected")))) {
