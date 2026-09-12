@@ -22,12 +22,14 @@ module.exports = {
         return new HDWalletProvider({
           privateKeys: [formattedKey],
           providerOrUrl: rpcUrl,
-          numberOfAddresses: 1
+          numberOfAddresses: 1,
+          pollingInterval: 15000
         });
       },
+      networkCheckTimeout: 100000,
       network_id: 11155111,
       gas: 5500000,
-      confirmations: 2,
+      confirmations: 1,
       timeoutBlocks: 200,
       skipDryRun: true
     }

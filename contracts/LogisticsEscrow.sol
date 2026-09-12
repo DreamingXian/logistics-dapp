@@ -109,6 +109,11 @@ contract LogisticsEscrow {
     // mapping(agreementId => mapping(milestoneIndex => unixTimestamp))
     mapping(uint256 => mapping(uint8 => uint256)) public milestoneSubmittedTimestamp;
 
+    // Audit tracking for milestone rejection & resubmission
+    mapping(uint256 => mapping(uint8 => bool)) public milestoneRejected;
+    mapping(uint256 => mapping(uint8 => string)) public milestoneRejectionReason;
+    mapping(uint256 => mapping(uint8 => string)) public milestoneLastRejectedProof;
+
     /// ============================================================================
     /// SECTION 4: EVENTS (On-Chain Transparency & Front-End Logging)
     /// ============================================================================
@@ -121,6 +126,7 @@ contract LogisticsEscrow {
     event AgreementRejected(uint256 indexed agreementId, address indexed carrier, uint256 refundAmount);
     event AgreementCancelled(uint256 indexed agreementId, address indexed shipper, uint256 refundAmount);
     event MilestoneSubmitted(uint256 indexed agreementId, uint8 milestoneIndex, string ipfsProof);
+    event MilestoneRejected(uint256 indexed agreementId, uint8 milestoneIndex, string reason);
     event FundsReleased(uint256 indexed agreementId, uint8 milestoneIndex, uint256 amount, address indexed carrier);
     event RefundIssued(uint256 indexed agreementId, address indexed shipper, uint256 amount);
     event ReputationAwarded(address indexed carrier, uint256 amount, bool isMint);
@@ -388,7 +394,33 @@ contract LogisticsEscrow {
         ag.milestones[_msIndex].ipfsProofHash = _ipfsProof;
         milestoneSubmittedTimestamp[_id][_msIndex] = block.timestamp;
         
+        // Clear previous rejection state upon resubmission
+        milestoneRejected[_id][_msIndex] = false;
+        milestoneRejectionReason[_id][_msIndex] = "";
+        
         emit MilestoneSubmitted(_id, _msIndex, _ipfsProof);
+    }
+
+    /// @notice Shipper rejects an inadequate or invalid milestone proof and requests resubmission
+    /// @dev Resets milestone completion, preserves rejected proof, and logs rejection reason
+    /// @param _id The unique agreement identifier
+    /// @param _msIndex Milestone index: 0 for Pickup, 1 for Final Delivery
+    /// @param _reason The explanation provided by shipper (e.g. "Blurry photo", "Damaged packaging")
+    function rejectMilestoneProof(uint256 _id, uint8 _msIndex, string calldata _reason) external onlyShipper(_id) {
+        require(_msIndex < 2, "Invalid milestone index");
+        Agreement storage ag = agreements[_id];
+        require(ag.milestones[_msIndex].completed, "Milestone proof not submitted yet");
+        require(!ag.milestones[_msIndex].approved, "Milestone payout already approved");
+
+        ag.milestones[_msIndex].completed = false;
+        milestoneLastRejectedProof[_id][_msIndex] = ag.milestones[_msIndex].ipfsProofHash;
+        ag.milestones[_msIndex].ipfsProofHash = "";
+        milestoneSubmittedTimestamp[_id][_msIndex] = 0;
+
+        milestoneRejected[_id][_msIndex] = true;
+        milestoneRejectionReason[_id][_msIndex] = _reason;
+
+        emit MilestoneRejected(_id, _msIndex, _reason);
     }
 
     /// @notice Shipper verifies inspection proof and triggers conditional milestone escrow release
@@ -650,6 +682,20 @@ contract LogisticsEscrow {
         require(_msIndex < 2, "Invalid milestone index");
         Milestone storage ms = agreements[_id].milestones[_msIndex];
         return (ms.description, ms.payoutPercent, ms.completed, ms.approved, ms.ipfsProofHash);
+    }
+
+    /// @notice Reads milestone rejection status, reason, and previous rejected photo hash
+    /// @param _id Agreement ID to query
+    /// @param _msIndex Milestone index: 0 for Pickup, 1 for Final Delivery
+    /// @return rejected True if the milestone is currently in rejected state
+    /// @return reason The reason string entered by the shipper
+    /// @return lastRejectedProof The IPFS CID of the rejected photo
+    function getMilestoneRejectionInfo(uint256 _id, uint8 _msIndex) external view returns (
+        bool rejected,
+        string memory reason,
+        string memory lastRejectedProof
+    ) {
+        return (milestoneRejected[_id][_msIndex], milestoneRejectionReason[_id][_msIndex], milestoneLastRejectedProof[_id][_msIndex]);
     }
 
     /// @notice Returns the total count of registered carriers in the platform directory
