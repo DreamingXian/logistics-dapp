@@ -133,25 +133,38 @@ git clone https://github.com/DreamingXian/logistics-dapp.git
 cd logistics-dapp
 ```
 
-#### Step 2: Install Web Server Dependencies
+#### Step 2: Replace .env.example 
+For safety purpose, the .env file should be included for the .gitignore so that the api key or some other private info not being leaks, but since this is a public project, the key will be listed here for your testing purpose.
+Replace the content of .env.example, and change it to .env file without the ".example"
+# Pinata connection
+PINATA_API_KEY=9c2491168ab20f5b9e0b
+PINATA_API_SECRET=59a45a98185cd07a459960e8d85e24c2e737cb6717dd6f927c660e8bda35f0b7
+PINATA_JWT=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI0NDNmYWVkOC0zYmEzLTRkMzMtYmJmOS1iMGUzYWU4YmEwMzAiLCJlbWFpbCI6InRhbnN4LXBtMjNAc3R1ZGVudC50YXJjLmVkdS5teSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiI5YzI0OTExNjhhYjIwZjViOWUwYiIsInNjb3BlZEtleVNlY3JldCI6IjU5YTQ1YTk4MTg1Y2QwN2E0NTk5NjBlOGQ4NWUyNGMyZTczN2NiNjcxN2RkNmY5MjdjNjYwZThiZGEzNWYwYjciLCJleHAiOjE4MjAwNjMzMDB9.7ycxlItBwToFxj0D9w7Igq5y9fVoe3bhf1ncIy3fc30
+
+# Sepolia Public Testnet
+SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/alch_VsgfFKkyXk-tGtAPNT3rs
+DEPLOYER_PRIVATE_KEY=ee28a54f0654ba5c09e3f1b18aa6c14f48c6c649563c4c5c65168fc717b1eb0e
+
+
+#### Step 3: Install Web Server Dependencies
 ```bash
 npm install
 ```
 *(Installs lightweight server libraries: `express`, `multer`, `dotenv`, and `@truffle/hdwallet-provider`)*
 
-#### Step 3: Launch the Web3 Platform Server
+#### Step 4: Launch the Web3 Platform Server
 ```bash
 npm start
 ```
 The server will start at: **`http://127.0.0.1:5000`**
 
-#### Step 4: Open in Your Browser
+#### Step 5: Open in Your Browser
 Open your browser (Google Chrome, Brave, or Edge with MetaMask installed) and navigate to:
 ```
 http://localhost:5000
 ```
 
-#### Step 5: Connect MetaMask on Sepolia
+#### Step 6: Connect MetaMask on Sepolia
 1. Open your **MetaMask** extension.
 2. In the top-left network selector, switch to **Sepolia** (Chain ID: `11155111`).
    - *If Sepolia is hidden in MetaMask, go to Settings > Advanced > Toggle "Show test networks" ON.*
@@ -162,7 +175,7 @@ http://localhost:5000
 4. Click **"Connect Wallet"** on the dApp navigation bar.
 5. The application will detect the network as **Ethereum Sepolia (11155111)** and automatically bind to our deployed contracts (`0x9915...` and `0xC4CB...`).
 
-#### Step 6: Test the Complete Logistics Workflow
+#### Step 7: Test the Complete Logistics Workflow
 1. **Register as Shipper**: Fill in your company name, select role "Shipper", and click Register.
 2. **Create a Freight Agreement**:
    - Open the "Create Agreement" tab.
